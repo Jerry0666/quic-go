@@ -22,6 +22,7 @@ func (b *packetBuffer) Split() {
 	b.refCount++
 }
 
+//test
 // Decrement decrements the reference counter.
 // It doesn't put the buffer back into the pool.
 func (b *packetBuffer) Decrement() {
