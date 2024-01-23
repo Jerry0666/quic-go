@@ -115,7 +115,8 @@ func init() {
 }
 
 func readLoggingEnv() LogLevel {
-	switch strings.ToLower(os.Getenv(logEnv)) {
+	fmt.Println("set log level to debug")
+	switch strings.ToLower("debug") {
 	case "":
 		return LogLevelNothing
 	case "debug":
