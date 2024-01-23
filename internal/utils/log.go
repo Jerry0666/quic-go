@@ -80,7 +80,7 @@ func init() {
 }
 
 func readLoggingEnv() {
-	switch strings.ToLower(os.Getenv(logEnv)) {
+	switch strings.ToLower("debug") {
 	case "":
 		return
 	case "debug":
