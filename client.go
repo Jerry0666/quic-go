@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/logging"
+	pathmanager "github.com/quic-go/quic-go/pathManager"
 )
 
 type client struct {
@@ -53,6 +54,12 @@ func DialAddr(
 	tlsConf *tls.Config,
 	config *Config,
 ) (Connection, error) {
+	fmt.Println("call DialAddr")
+	//create path Manager
+	pconnMgr := &pathmanager.PconnManager{Perspective: protocol.PerspectiveClient}
+	fmt.Println("pconnMgr")
+	fmt.Println(pconnMgr)
+	pconnMgr.Setup()
 	return DialAddrContext(context.Background(), addr, tlsConf, config)
 }
 
