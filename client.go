@@ -15,6 +15,8 @@ import (
 
 type client struct {
 	sconn sendConn
+
+	conn2 sendConn
 	// If the client is created with DialAddr, we create a packet conn.
 	// If it is started with Dial, we take a packet conn as a parameter.
 	createdPacketConn bool
@@ -113,7 +115,8 @@ func dialAddrContext(
 	if err != nil {
 		return nil, err
 	}
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(11, 0, 0, 1), Port: 0})
+	fmt.Printf("create the udp connection, local addr:%s\n", udpConn.LocalAddr().String())
 	if err != nil {
 		return nil, err
 	}

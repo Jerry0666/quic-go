@@ -357,6 +357,7 @@ func (p *packetPacker) initialPaddingLen(frames []*ackhandler.Frame, size protoc
 // It packs an Initial / Handshake if there is data to send in these packet number spaces.
 // It should only be called before the handshake is confirmed.
 func (p *packetPacker) PackCoalescedPacket(onlyAck bool, v protocol.VersionNumber) (*coalescedPacket, error) {
+	fmt.Println("packetPacker PackCoalescedPacket")
 	maxPacketSize := p.maxPacketSize
 	if p.perspective == protocol.PerspectiveClient {
 		maxPacketSize = protocol.MinInitialPacketSize
@@ -481,6 +482,7 @@ func (p *packetPacker) PackCoalescedPacket(onlyAck bool, v protocol.VersionNumbe
 // PackPacket packs a packet in the application data packet number space.
 // It should be called after the handshake is confirmed.
 func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.VersionNumber) (shortHeaderPacket, *packetBuffer, error) {
+	fmt.Println("PackPacket!")
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, nil, err
@@ -494,6 +496,7 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	}
 	kp := sealer.KeyPhase()
 	buffer := getPacketBuffer()
+	//call appendShortHeaderPacket
 	ap, ack, err := p.appendShortHeaderPacket(buffer, connID, pn, pnLen, kp, pl, 0, sealer, false, v)
 	if err != nil {
 		return shortHeaderPacket{}, nil, err
@@ -586,11 +589,13 @@ func (p *packetPacker) maybeGetAppDataPacketFor0RTT(sealer sealer, maxPacketSize
 	return hdr, p.maybeGetAppDataPacket(maxPayloadSize, false, false, v)
 }
 
+//get the data payload.
 func (p *packetPacker) maybeGetShortHeaderPacket(sealer handshake.ShortHeaderSealer, hdrLen protocol.ByteCount, maxPacketSize protocol.ByteCount, onlyAck, ackAllowed bool, v protocol.VersionNumber) payload {
 	maxPayloadSize := maxPacketSize - hdrLen - protocol.ByteCount(sealer.Overhead())
 	return p.maybeGetAppDataPacket(maxPayloadSize, onlyAck, ackAllowed, v)
 }
 
+//get the app data, if need to transport ack, send ack.
 func (p *packetPacker) maybeGetAppDataPacket(maxPayloadSize protocol.ByteCount, onlyAck, ackAllowed bool, v protocol.VersionNumber) payload {
 	pl := p.composeNextPacket(maxPayloadSize, onlyAck, ackAllowed, v)
 
@@ -849,6 +854,7 @@ func (p *packetPacker) appendLongHeaderPacket(buffer *packetBuffer, header *wire
 	}, nil
 }
 
+//add the short header, and encrypt the packet payload.
 func (p *packetPacker) appendShortHeaderPacket(
 	buffer *packetBuffer,
 	connID protocol.ConnectionID,

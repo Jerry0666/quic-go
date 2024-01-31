@@ -232,6 +232,8 @@ var (
 	_ streamSender    = &connection{}
 )
 
+var testSecondConn bool
+
 var newConnection = func(
 	conn sendConn,
 	runner connRunner,
@@ -478,7 +480,13 @@ var newClientConnection = func(
 }
 
 func (s *connection) preSetup() {
-	s.sendQueue = newSendQueue(s.conn)
+	fmt.Println("connection preSetup")
+	if s.perspective == protocol.PerspectiveServer {
+		s.sendQueue = newSendQueueServer(s.conn)
+	}
+	if s.perspective == protocol.PerspectiveClient {
+		s.sendQueue = newSendQueue(s.conn)
+	}
 	s.retransmissionQueue = newRetransmissionQueue()
 	s.frameParser = wire.NewFrameParser(s.config.EnableDatagrams)
 	s.rttStats = &utils.RTTStats{}
@@ -520,6 +528,8 @@ func (s *connection) preSetup() {
 
 // run the connection main loop
 func (s *connection) run() error {
+	fmt.Println("connection run")
+	testSecondConn = false
 	defer s.ctxCancel()
 
 	s.timer = *newTimer()
@@ -527,9 +537,11 @@ func (s *connection) run() error {
 	handshaking := make(chan struct{})
 	go func() {
 		defer close(handshaking)
+		fmt.Println("RunHandshake")
 		s.cryptoStreamHandler.RunHandshake()
 	}()
 	go func() {
+		fmt.Println("connection call the sendQueue Run()...")
 		if err := s.sendQueue.Run(); err != nil {
 			s.destroyImpl(err)
 		}
@@ -554,6 +566,17 @@ func (s *connection) run() error {
 		sendQueueAvailable <-chan struct{}
 	)
 
+	go func() {
+		if s.perspective == protocol.PerspectiveClient {
+			time.Sleep(3 * time.Second)
+			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
+			path_ch := wire.PathChallengeFrame{Data: data}
+			s.framer.QueueControlFrame(&path_ch)
+			fmt.Println("It is client, Queue the path challenge!")
+			testSecondConn = true
+		}
+	}()
+	fmt.Println("do runLoop")
 runLoop:
 	for {
 		// Close immediately if requested
@@ -1342,6 +1365,7 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 
 // handlePacket is called by the server with a new packet
 func (s *connection) handlePacket(p *receivedPacket) {
+	fmt.Println("connection handlePacket.")
 	// Discard packets once the amount of queued packets is larger than
 	// the channel size, protocol.MaxConnUnprocessedPackets
 	select {
@@ -1443,7 +1467,8 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
-	s.queueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+	fmt.Println("handle Path Challenge Frame!")
+	//s.queueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
@@ -1865,6 +1890,7 @@ func (s *connection) sendProbePacket(encLevel protocol.EncryptionLevel) error {
 }
 
 func (s *connection) sendPacket() (bool, error) {
+	fmt.Println("connection sendPacket!")
 	if isBlocked, offset := s.connFlowController.IsNewlyBlocked(); isBlocked {
 		s.framer.QueueControlFrame(&wire.DataBlockedFrame{MaximumData: offset})
 	}
@@ -1872,6 +1898,7 @@ func (s *connection) sendPacket() (bool, error) {
 
 	now := time.Now()
 	if !s.handshakeConfirmed {
+		fmt.Println("!s.handshakeConfirmed")
 		packet, err := s.packer.PackCoalescedPacket(false, s.version)
 		if err != nil || packet == nil {
 			return false, err
@@ -1880,6 +1907,7 @@ func (s *connection) sendPacket() (bool, error) {
 		s.sendPackedCoalescedPacket(packet, now)
 		return true, nil
 	} else if !s.config.DisablePathMTUDiscovery && s.mtuDiscoverer.ShouldSendProbe(now) {
+		fmt.Println("should send probe.")
 		ping, size := s.mtuDiscoverer.GetPing()
 		p, buffer, err := s.packer.PackMTUProbePacket(ping, size, now, s.version)
 		if err != nil {
@@ -1896,12 +1924,14 @@ func (s *connection) sendPacket() (bool, error) {
 		}
 		return false, err
 	}
+	fmt.Println("s.logShortHeaderPacket")
 	s.logShortHeaderPacket(p.DestConnID, p.Ack, p.Frames, p.PacketNumber, p.PacketNumberLen, p.KeyPhase, buffer.Len(), false)
 	s.sendPackedShortHeaderPacket(buffer, p.Packet, now)
 	return true, nil
 }
 
 func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhandler.Packet, now time.Time) {
+	fmt.Println("connection sendPackedShortHeaderPacket")
 	if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && ackhandler.HasAckElicitingFrames(p.Frames) {
 		s.firstAckElicitingPacketAfterIdleSentTime = now
 	}
@@ -1912,6 +1942,7 @@ func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhan
 }
 
 func (s *connection) sendPackedCoalescedPacket(packet *coalescedPacket, now time.Time) {
+	fmt.Println("send Packed Coalesed Packet")
 	s.logCoalescedPacket(packet)
 	for _, p := range packet.longHdrPackets {
 		if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && p.IsAckEliciting() {
@@ -1952,6 +1983,7 @@ func (s *connection) sendConnectionClose(e error) ([]byte, error) {
 }
 
 func (s *connection) logLongHeaderPacket(p *longHeaderPacket) {
+	fmt.Println("log LongHeader Packet")
 	// quic-go logging
 	if s.logger.Debug() {
 		p.header.Log(s.logger)
@@ -1987,6 +2019,7 @@ func (s *connection) logShortHeaderPacket(
 	size protocol.ByteCount,
 	isCoalesced bool,
 ) {
+	fmt.Println("log ShortHeaderPacket")
 	if s.logger.Debug() && !isCoalesced {
 		s.logger.Debugf("-> Sending packet %d (%d bytes) for connection %s, 1-RTT", pn, size, s.logID)
 	}
@@ -1997,6 +2030,7 @@ func (s *connection) logShortHeaderPacket(
 			wire.LogFrame(s.logger, ackFrame, true)
 		}
 		for _, frame := range frames {
+			fmt.Println("wire.LogFrame")
 			wire.LogFrame(s.logger, frame.Frame, true)
 		}
 	}
@@ -2026,6 +2060,7 @@ func (s *connection) logShortHeaderPacket(
 }
 
 func (s *connection) logCoalescedPacket(packet *coalescedPacket) {
+	fmt.Println("log Coalesced Packet")
 	if s.logger.Debug() {
 		// There's a short period between dropping both Initial and Handshake keys and completion of the handshake,
 		// during which we might call PackCoalescedPacket but just pack a short header packet.
@@ -2158,6 +2193,7 @@ func (s *connection) onStreamCompleted(id protocol.StreamID) {
 }
 
 func (s *connection) SendMessage(p []byte) error {
+	fmt.Println("call connection SendMessage")
 	if !s.supportsDatagrams() {
 		return errors.New("datagram support disabled")
 	}

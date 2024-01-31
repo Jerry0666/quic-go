@@ -175,6 +175,7 @@ func ListenEarly(conn net.PacketConn, tlsConf *tls.Config, config *Config) (Earl
 	return &earlyServer{s}, nil
 }
 
+//create the listener, i.e. baseServer
 func listen(conn net.PacketConn, tlsConf *tls.Config, config *Config, acceptEarly bool) (*baseServer, error) {
 	if tlsConf == nil {
 		return nil, errors.New("quic: tls.Config not set")

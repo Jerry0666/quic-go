@@ -305,7 +305,7 @@ var _ = Describe("Connection", func() {
 		})
 
 		It("handles PATH_CHALLENGE frames", func() {
-			data := [8]byte{1, 2, 3, 4, 5, 6, 7, 8}
+			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
 			err := conn.handleFrame(&wire.PathChallengeFrame{Data: data}, protocol.Encryption1RTT, protocol.ConnectionID{})
 			Expect(err).ToNot(HaveOccurred())
 			frames, _ := conn.framer.AppendControlFrames(nil, 1000, protocol.Version1)

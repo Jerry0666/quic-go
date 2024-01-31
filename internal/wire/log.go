@@ -10,6 +10,7 @@ import (
 
 // LogFrame logs a frame, either sent or received
 func LogFrame(logger utils.Logger, frame Frame, sent bool) {
+	fmt.Println("Log Frame")
 	if !logger.Debug() {
 		return
 	}
@@ -67,6 +68,7 @@ func LogFrame(logger utils.Logger, frame Frame, sent bool) {
 	case *NewTokenFrame:
 		logger.Debugf("\t%s &wire.NewTokenFrame{Token: %#x}", dir, f.Token)
 	default:
+		fmt.Println("log default")
 		logger.Debugf("\t%s %#v", dir, frame)
 	}
 }

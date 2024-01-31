@@ -139,6 +139,7 @@ func newPacketHandlerMap(
 	if m.statelessResetEnabled {
 		m.statelessResetHasher = hmac.New(sha256.New, statelessResetKey[:])
 	}
+	fmt.Println("go packetHandlerMap listen()")
 	go m.listen()
 	go m.runCloseQueue()
 
@@ -359,6 +360,7 @@ func (h *packetHandlerMap) close(e error) error {
 }
 
 func (h *packetHandlerMap) listen() {
+
 	defer close(h.listening)
 	for {
 		p, err := h.conn.ReadPacket()
@@ -374,6 +376,9 @@ func (h *packetHandlerMap) listen() {
 			h.close(err)
 			return
 		}
+		fmt.Println("receive udp packet, then call handlePacket.")
+		fmt.Println("remote addr:")
+		fmt.Println(p.remoteAddr)
 		h.handlePacket(p)
 	}
 }
@@ -408,6 +413,7 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 		}
 	}
 	if !wire.IsLongHeaderPacket(p.data[0]) {
+		fmt.Println("It is not LongHeaderPacket.")
 		go h.maybeSendStatelessReset(p, connID)
 		return
 	}

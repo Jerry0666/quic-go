@@ -302,6 +302,7 @@ func (h *cryptoSetup) SetLargest1RTTAcked(pn protocol.PacketNumber) error {
 }
 
 func (h *cryptoSetup) RunHandshake() {
+	fmt.Println("cryptoSetup RunHandshake")
 	// Handle errors that might occur when HandleData() is called.
 	handshakeComplete := make(chan struct{})
 	handshakeErrChan := make(chan error, 1)

@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -56,6 +57,7 @@ func (b *packetBuffer) Len() protocol.ByteCount {
 }
 
 func (b *packetBuffer) putBack() {
+	fmt.Println("packetBuffer putBack")
 	if cap(b.Data) != int(protocol.MaxPacketBufferSize) {
 		panic("putPacketBuffer called with packet of wrong size!")
 	}

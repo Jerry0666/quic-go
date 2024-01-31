@@ -43,6 +43,7 @@ type connMultiplexer struct {
 
 var _ multiplexer = &connMultiplexer{}
 
+//get the connection, which is used to handle connections
 func getMultiplexer() multiplexer {
 	connMuxerOnce.Do(func() {
 		connMuxer = &connMultiplexer{
@@ -60,11 +61,13 @@ func (m *connMultiplexer) AddConn(
 	statelessResetKey *StatelessResetKey,
 	tracer logging.Tracer,
 ) (packetHandlerManager, error) {
+	fmt.Println("call connMultiplexer AddConn")
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	addr := c.LocalAddr()
 	connIndex := addr.Network() + " " + addr.String()
+	fmt.Printf("create connIndex:%s\n", connIndex)
 	p, ok := m.conns[connIndex]
 	if !ok {
 		manager, err := m.newPacketHandlerManager(c, connIDLen, statelessResetKey, tracer, m.logger)

@@ -2,6 +2,7 @@ package quic
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/ackhandler"
@@ -57,15 +58,20 @@ func (f *framerI) HasData() bool {
 }
 
 func (f *framerI) QueueControlFrame(frame wire.Frame) {
+	fmt.Println("Queued Control Frame")
 	f.controlFrameMutex.Lock()
 	f.controlFrames = append(f.controlFrames, frame)
 	f.controlFrameMutex.Unlock()
 }
 
+//append control frame to frame list
 func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protocol.ByteCount, v protocol.VersionNumber) ([]*ackhandler.Frame, protocol.ByteCount) {
+	fmt.Println("framerI AppendControlFrames")
 	var length protocol.ByteCount
+	fmt.Printf("length: %v\n", length)
 	f.controlFrameMutex.Lock()
 	for len(f.controlFrames) > 0 {
+		//take out the last one
 		frame := f.controlFrames[len(f.controlFrames)-1]
 		frameLen := frame.Length(v)
 		if length+frameLen > maxLen {
