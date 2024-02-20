@@ -15,6 +15,7 @@ type sender interface {
 
 type sendQueue struct {
 	queue       chan *packetBuffer
+	queue2      chan *packetBuffer
 	closeCalled chan struct{} // runStopped when Close() is called
 	runStopped  chan struct{} // runStopped when the run loop returns
 	available   chan struct{}
@@ -26,6 +27,12 @@ type sendQueue struct {
 var _ sender = &sendQueue{}
 
 const sendQueueCapacity = 8
+
+func UseSecondQueue(s sender, p *packetBuffer) {
+	fmt.Println("UseSecondQueue")
+	mySendQueue := s.(*sendQueue)
+	mySendQueue.Send2(p)
+}
 
 func newSendQueue(conn sendConn) sender {
 
@@ -41,6 +48,7 @@ func newSendQueue(conn sendConn) sender {
 		available:   make(chan struct{}, 1),
 		Test:        false,
 		queue:       make(chan *packetBuffer, sendQueueCapacity),
+		queue2:      make(chan *packetBuffer, sendQueueCapacity),
 	}
 }
 
@@ -74,6 +82,23 @@ func (h *sendQueue) Send(p *packetBuffer) {
 	}
 }
 
+func (h *sendQueue) Send2(p *packetBuffer) {
+	fmt.Println("send packet to the second queue!")
+	select {
+	case h.queue2 <- p:
+		// clear available channel if we've reached capacity
+		if len(h.queue2) == sendQueueCapacity {
+			select {
+			case <-h.available:
+			default:
+			}
+		}
+	case <-h.runStopped:
+	default:
+		panic("sendQueue.Send would have blocked")
+	}
+}
+
 func (h *sendQueue) WouldBlock() bool {
 	return len(h.queue) == sendQueueCapacity
 }
@@ -95,8 +120,24 @@ func (h *sendQueue) Run() error {
 			h.closeCalled = nil // prevent this case from being selected again
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
+		case p := <-h.queue2:
+			fmt.Println("receive from queue2!")
+			err := h.conn2.Write(p.Data)
+			if err != nil {
+				// This additional check enables:
+				// 1. Checking for "datagram too large" message from the kernel, as such,
+				// 2. Path MTU discovery,and
+				// 3. Eventual detection of loss PingFrame.
+				if !isMsgSizeErr(err) {
+					return err
+				}
+			}
+			p.Release()
+			select {
+			case h.available <- struct{}{}:
+			default:
+			}
 		case p := <-h.queue:
-			testSecondConn = false
 			if testSecondConn {
 				err := h.conn2.Write(p.Data)
 				if err != nil {

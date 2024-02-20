@@ -377,14 +377,15 @@ func (h *packetHandlerMap) listen() {
 			return
 		}
 		fmt.Println("receive udp packet, then call handlePacket.")
-		fmt.Println("remote addr:")
-		fmt.Println(p.remoteAddr)
 		h.handlePacket(p)
 	}
 }
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	connID, err := wire.ParseConnectionID(p.data, h.connIDLen)
+	fmt.Printf("remote ip:%s\n", p.remoteAddr.String())
+	fmt.Printf("connID: %s\n", connID.String())
+	fmt.Printf("data len:%d\n", len(p.data))
 	if err != nil {
 		h.logger.Debugf("error parsing connection ID on packet from %s: %s", p.remoteAddr, err)
 		if h.tracer != nil {

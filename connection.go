@@ -571,9 +571,10 @@ func (s *connection) run() error {
 			time.Sleep(3 * time.Second)
 			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
 			path_ch := wire.PathChallengeFrame{Data: data}
+			fmt.Println("see the challenge frame.")
+			fmt.Printf("%v\n", &path_ch)
 			s.framer.QueueControlFrame(&path_ch)
 			fmt.Println("It is client, Queue the path challenge!")
-			testSecondConn = true
 		}
 	}()
 	fmt.Println("do runLoop")
@@ -1898,7 +1899,6 @@ func (s *connection) sendPacket() (bool, error) {
 
 	now := time.Now()
 	if !s.handshakeConfirmed {
-		fmt.Println("!s.handshakeConfirmed")
 		packet, err := s.packer.PackCoalescedPacket(false, s.version)
 		if err != nil || packet == nil {
 			return false, err
@@ -1926,12 +1926,42 @@ func (s *connection) sendPacket() (bool, error) {
 	}
 	fmt.Println("s.logShortHeaderPacket")
 	s.logShortHeaderPacket(p.DestConnID, p.Ack, p.Frames, p.PacketNumber, p.PacketNumberLen, p.KeyPhase, buffer.Len(), false)
-	s.sendPackedShortHeaderPacket(buffer, p.Packet, now)
+	frames := p.Frames
+	ans := isPathChallengeFrame(frames)
+	if ans {
+		s.sendPackedShortHeaderPacket2(buffer, p.Packet, now)
+	} else {
+		s.sendPackedShortHeaderPacket(buffer, p.Packet, now)
+	}
 	return true, nil
 }
 
+func isPathChallengeFrame(frames []*ackhandler.Frame) bool {
+	ans := false
+	for _, frame := range frames {
+		if checkChallengeFrame(frame.Frame) {
+			ans = true
+			break
+		}
+	}
+
+	return ans
+}
+
+func checkChallengeFrame(frame wire.Frame) bool {
+	fmt.Println("frame:")
+	fmt.Printf("%#v\n", frame)
+	_, ok := frame.(*wire.PathChallengeFrame)
+	fmt.Printf("ok is :%v\n", ok)
+	if ok {
+		fmt.Println("find a PathChallenge frame haha!")
+		return true
+	} else {
+		return false
+	}
+}
+
 func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhandler.Packet, now time.Time) {
-	fmt.Println("connection sendPackedShortHeaderPacket")
 	if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && ackhandler.HasAckElicitingFrames(p.Frames) {
 		s.firstAckElicitingPacketAfterIdleSentTime = now
 	}
@@ -1939,6 +1969,17 @@ func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhan
 	s.sentPacketHandler.SentPacket(p)
 	s.connIDManager.SentPacket()
 	s.sendQueue.Send(buffer)
+}
+
+func (s *connection) sendPackedShortHeaderPacket2(buffer *packetBuffer, p *ackhandler.Packet, now time.Time) {
+	fmt.Println("sendPackedShortHeaderPacket2")
+	if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && ackhandler.HasAckElicitingFrames(p.Frames) {
+		s.firstAckElicitingPacketAfterIdleSentTime = now
+	}
+
+	s.sentPacketHandler.SentPacket(p)
+	s.connIDManager.SentPacket()
+	UseSecondQueue(s.sendQueue, buffer)
 }
 
 func (s *connection) sendPackedCoalescedPacket(packet *coalescedPacket, now time.Time) {
