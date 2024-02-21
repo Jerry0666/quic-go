@@ -1948,6 +1948,15 @@ func isPathChallengeFrame(frames []*ackhandler.Frame) bool {
 	return ans
 }
 
+func findPathChallengeFrame(frames []wire.Frame) int {
+	for i, frame := range frames {
+		if checkChallengeFrame(frame) {
+			return i
+		}
+	}
+	return -1
+}
+
 func checkChallengeFrame(frame wire.Frame) bool {
 	fmt.Println("frame:")
 	fmt.Printf("%#v\n", frame)

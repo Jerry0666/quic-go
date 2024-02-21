@@ -69,8 +69,25 @@ func (f *framerI) QueueControlFrame(frame wire.Frame) {
 //append control frame to frame list
 func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protocol.ByteCount, v protocol.VersionNumber) ([]*ackhandler.Frame, protocol.ByteCount) {
 	fmt.Println("framerI AppendControlFrames")
+	fmt.Printf("before, see the frame size:%d\n", len(frames))
 	var length protocol.ByteCount
+	index := findPathChallengeFrame(f.controlFrames)
 	f.controlFrameMutex.Lock()
+	if index != -1 {
+		//only take out the path challenge frame
+		fmt.Println("only path challenge")
+		frame := f.controlFrames[index]
+		frameLen := frame.Length(v)
+		if length+frameLen > maxLen {
+			fmt.Println("length+frameLen > maxLen")
+		}
+		af := ackhandler.GetFrame()
+		af.Frame = frame
+		frames = append(frames, af)
+		length += frameLen
+		f.controlFrames = append(f.controlFrames[:index], f.controlFrames[index+1:]...)
+		goto AfterLoop
+	}
 	for len(f.controlFrames) > 0 {
 		//take out the last one
 		frame := f.controlFrames[len(f.controlFrames)-1]
@@ -85,7 +102,9 @@ func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protoco
 		length += frameLen
 		f.controlFrames = f.controlFrames[:len(f.controlFrames)-1]
 	}
+AfterLoop:
 	f.controlFrameMutex.Unlock()
+	fmt.Printf("Frime size:%d\n", len(frames))
 	return frames, length
 }
 

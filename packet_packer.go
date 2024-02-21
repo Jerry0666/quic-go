@@ -639,6 +639,19 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	hasData := p.framer.HasData()
 	hasRetransmission := p.retransmissionQueue.HasAppData()
 
+	if hasData {
+		var lengthAdded protocol.ByteCount
+		pl.frames, lengthAdded = p.framer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
+		pl.length += lengthAdded
+		if isPathChallengeFrame(pl.frames) {
+			fmt.Printf("see the frame size:%d\n", len(pl.frames))
+			return pl
+		}
+
+		pl.frames, lengthAdded = p.framer.AppendStreamFrames(pl.frames, maxFrameSize-pl.length, v)
+		pl.length += lengthAdded
+	}
+
 	var hasAck bool
 	if ackAllowed {
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, !hasRetransmission && !hasData); ack != nil {
@@ -684,14 +697,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 		}
 	}
 
-	if hasData {
-		var lengthAdded protocol.ByteCount
-		pl.frames, lengthAdded = p.framer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
-		pl.length += lengthAdded
-
-		pl.frames, lengthAdded = p.framer.AppendStreamFrames(pl.frames, maxFrameSize-pl.length, v)
-		pl.length += lengthAdded
-	}
 	return pl
 }
 
