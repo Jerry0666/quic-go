@@ -69,6 +69,7 @@ func LogFrame(logger utils.Logger, frame Frame, sent bool) {
 		logger.Debugf("\t%s &wire.NewTokenFrame{Token: %#x}", dir, f.Token)
 	case *PathChallengeFrame:
 		fmt.Println("find a PathChallengeFrame")
+		logger.Debugf("\t%s %#v", dir, frame)
 	default:
 		fmt.Println("log default")
 		logger.Debugf("\t%s %#v", dir, frame)

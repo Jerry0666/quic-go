@@ -154,6 +154,8 @@ type ackFrameSource interface {
 type packetPacker struct {
 	srcConnID     protocol.ConnectionID
 	getDestConnID func() protocol.ConnectionID
+	//the second path connection id.
+	getDestConnID2 func() protocol.ConnectionID
 
 	perspective protocol.Perspective
 	cryptoSetup sealingManager
@@ -190,6 +192,10 @@ func newPacketPacker(srcConnID protocol.ConnectionID, getDestConnID func() proto
 		pnManager:           packetNumberManager,
 		maxPacketSize:       getMaxPacketSize(remoteAddr),
 	}
+}
+
+func (p *packetPacker) SetSecondConn(getDestConnID2 func() protocol.ConnectionID) {
+	p.getDestConnID2 = getDestConnID2
 }
 
 // PackConnectionClose packs a packet that closes the connection with a transport error.
@@ -491,6 +497,11 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	connID := p.getDestConnID()
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, p.maxPacketSize, onlyAck, true, v)
+	//check if it is path validation
+	IspathValidation := isPathChallengeFrame(pl.frames)
+	if IspathValidation {
+		connID = p.getDestConnID2()
+	}
 	if pl.length == 0 {
 		return shortHeaderPacket{}, nil, errNothingToPack
 	}

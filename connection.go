@@ -466,6 +466,11 @@ var newClientConnection = func(
 	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, newCryptoStream())
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	//set the second conn id
+	p, ok := s.packer.(*packetPacker)
+	if ok {
+		p.SetSecondConn(s.connIDManager.GetSecondConn)
+	}
 	if len(tlsConf.ServerName) > 0 {
 		s.tokenStoreKey = tlsConf.ServerName
 	} else {
@@ -480,7 +485,7 @@ var newClientConnection = func(
 }
 
 func (s *connection) preSetup() {
-	fmt.Println("connection preSetup")
+	fmt.Println("connection preSetup!")
 	if s.perspective == protocol.PerspectiveServer {
 		s.sendQueue = newSendQueueServer(s.conn)
 	}
@@ -575,6 +580,10 @@ func (s *connection) run() error {
 			fmt.Printf("%v\n", &path_ch)
 			s.framer.QueueControlFrame(&path_ch)
 			fmt.Println("It is client, Queue the path challenge!")
+			fmt.Println("see the available connection id:")
+			for el := s.connIDManager.queue.Front(); el != nil; el = el.Next() {
+				fmt.Printf("%#v\n", el)
+			}
 		}
 	}()
 	fmt.Println("do runLoop")
