@@ -2,11 +2,11 @@ package quic
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/ackhandler"
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -58,9 +58,7 @@ func (f *framerI) HasData() bool {
 }
 
 func (f *framerI) QueueControlFrame(frame wire.Frame) {
-	fmt.Println("Queued Control Frame")
-	fmt.Println("see the control frame:")
-	fmt.Printf("%#v\n", frame)
+	utils.DebugNormolLog("Queued Control Frame")
 	f.controlFrameMutex.Lock()
 	f.controlFrames = append(f.controlFrames, frame)
 	f.controlFrameMutex.Unlock()
@@ -68,18 +66,17 @@ func (f *framerI) QueueControlFrame(frame wire.Frame) {
 
 //append control frame to frame list
 func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protocol.ByteCount, v protocol.VersionNumber) ([]*ackhandler.Frame, protocol.ByteCount) {
-	fmt.Println("framerI AppendControlFrames")
-	fmt.Printf("before, see the frame size:%d\n", len(frames))
+	utils.DebugLogEnterfunc("[framerI] AppendControlFrames")
 	var length protocol.ByteCount
 	index := findPathChallengeFrame(f.controlFrames)
 	f.controlFrameMutex.Lock()
 	if index != -1 {
 		//only take out the path challenge frame
-		fmt.Println("only path challenge")
+		utils.DebugNormolLog("only path challenge")
 		frame := f.controlFrames[index]
 		frameLen := frame.Length(v)
 		if length+frameLen > maxLen {
-			fmt.Println("length+frameLen > maxLen")
+			utils.DebugNormolLog("length+frameLen > maxLen")
 		}
 		af := ackhandler.GetFrame()
 		af.Frame = frame
@@ -91,7 +88,6 @@ func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protoco
 	for len(f.controlFrames) > 0 {
 		//take out the last one
 		frame := f.controlFrames[len(f.controlFrames)-1]
-		fmt.Printf("%v\n", frame)
 		frameLen := frame.Length(v)
 		if length+frameLen > maxLen {
 			break
@@ -104,7 +100,6 @@ func (f *framerI) AppendControlFrames(frames []*ackhandler.Frame, maxLen protoco
 	}
 AfterLoop:
 	f.controlFrameMutex.Unlock()
-	fmt.Printf("Frime size:%d\n", len(frames))
 	return frames, length
 }
 

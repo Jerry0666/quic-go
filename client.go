@@ -56,11 +56,9 @@ func DialAddr(
 	tlsConf *tls.Config,
 	config *Config,
 ) (Connection, error) {
-	fmt.Println("call DialAddr")
+	utils.DebugLogEnterfunc("DialAddr.")
 	//create path Manager
 	pconnMgr := &pathmanager.PconnManager{Perspective: protocol.PerspectiveClient}
-	fmt.Println("pconnMgr")
-	fmt.Println(pconnMgr)
 	pconnMgr.Setup()
 	return DialAddrContext(context.Background(), addr, tlsConf, config)
 }
@@ -116,7 +114,7 @@ func dialAddrContext(
 		return nil, err
 	}
 	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(11, 0, 0, 1), Port: 0})
-	fmt.Printf("create the udp connection, local addr:%s\n", udpConn.LocalAddr().String())
+	utils.DebugNormolLog("create the udp connection, local addr:%s", udpConn.LocalAddr().String())
 	if err != nil {
 		return nil, err
 	}

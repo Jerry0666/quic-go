@@ -3,6 +3,8 @@ package quic
 import (
 	"fmt"
 	"net"
+
+	"github.com/quic-go/quic-go/internal/utils"
 )
 
 type sender interface {
@@ -35,9 +37,8 @@ func UseSecondQueue(s sender, p *packetBuffer) {
 }
 
 func newSendQueue(conn sendConn) sender {
-
 	udpConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 0})
-	fmt.Printf("create the second udp connection, addr:%s\n", udpConn.LocalAddr().String())
+	utils.DebugNormolLog("create the second udp connection, addr:%s", udpConn.LocalAddr().String())
 	udpAddr, _ := net.ResolveUDPAddr("udp", "100.0.0.1:30000")
 	c2 := newSendPconn(udpConn, udpAddr)
 	return &sendQueue{
@@ -108,7 +109,6 @@ func (h *sendQueue) Available() <-chan struct{} {
 }
 
 func (h *sendQueue) Run() error {
-	fmt.Println("sendQueue Run()")
 	defer close(h.runStopped)
 	var shouldClose bool
 	for {

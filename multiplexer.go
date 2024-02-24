@@ -61,13 +61,13 @@ func (m *connMultiplexer) AddConn(
 	statelessResetKey *StatelessResetKey,
 	tracer logging.Tracer,
 ) (packetHandlerManager, error) {
-	fmt.Println("call connMultiplexer AddConn")
+	utils.DebugLogEnterfunc("[connMultiplexer] addConn")
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	addr := c.LocalAddr()
 	connIndex := addr.Network() + " " + addr.String()
-	fmt.Printf("create connIndex:%s\n", connIndex)
+	utils.DebugNormolLog("create connIndex:%s", connIndex)
 	p, ok := m.conns[connIndex]
 	if !ok {
 		manager, err := m.newPacketHandlerManager(c, connIDLen, statelessResetKey, tracer, m.logger)

@@ -139,7 +139,7 @@ func newPacketHandlerMap(
 	if m.statelessResetEnabled {
 		m.statelessResetHasher = hmac.New(sha256.New, statelessResetKey[:])
 	}
-	fmt.Println("go packetHandlerMap listen()")
+	utils.DebugLogEnterfunc("go [packetHandlerMap] listen")
 	go m.listen()
 	go m.runCloseQueue()
 
@@ -376,16 +376,15 @@ func (h *packetHandlerMap) listen() {
 			h.close(err)
 			return
 		}
-		fmt.Println("receive udp packet, then call handlePacket.")
+		utils.DebugNormolLog("receive udp packet...")
 		h.handlePacket(p)
 	}
 }
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	connID, err := wire.ParseConnectionID(p.data, h.connIDLen)
-	fmt.Printf("remote ip:%s\n", p.remoteAddr.String())
-	fmt.Printf("connID: %s\n", connID.String())
-	fmt.Printf("data len:%d\n", len(p.data))
+	utils.DebugNormolLog("remote ip:%s", p.remoteAddr.String())
+	utils.DebugNormolLog("connID: %s", connID.String())
 	if err != nil {
 		h.logger.Debugf("error parsing connection ID on packet from %s: %s", p.remoteAddr, err)
 		if h.tracer != nil {

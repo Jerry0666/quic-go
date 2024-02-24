@@ -10,7 +10,6 @@ import (
 
 // LogFrame logs a frame, either sent or received
 func LogFrame(logger utils.Logger, frame Frame, sent bool) {
-	fmt.Println("Log Frame")
 	if !logger.Debug() {
 		return
 	}
@@ -71,7 +70,6 @@ func LogFrame(logger utils.Logger, frame Frame, sent bool) {
 		fmt.Println("find a PathChallengeFrame")
 		logger.Debugf("\t%s %#v", dir, frame)
 	default:
-		fmt.Println("log default")
 		logger.Debugf("\t%s %#v", dir, frame)
 	}
 }

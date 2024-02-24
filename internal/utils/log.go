@@ -20,9 +20,12 @@ const (
 	LogLevelInfo
 	// LogLevelDebug enables debug logs (e.g. packet contents)
 	LogLevelDebug
+	// LogLevelTrace enables trace some procedure and function
+	LogLevelTrace
 )
 
 const logEnv = "QUIC_GO_LOG_LEVEL"
+const globalLogLevel = LogLevelDebug
 
 // A Logger logs.
 type Logger interface {
@@ -67,6 +70,19 @@ func (l *defaultLogger) Debugf(format string, args ...interface{}) {
 	}
 }
 
+// Debug log enter a func, first bucket contain the func structure
+func DebugLogEnterfunc(format string, args ...interface{}) {
+	if globalLogLevel == LogLevelDebug {
+		fmt.Printf("\033[32m"+format+"\033[0m\n", args...)
+	}
+}
+
+func DebugNormolLog(format string, args ...interface{}) {
+	if globalLogLevel == LogLevelDebug {
+		fmt.Printf("\033[32m"+format+"\033[0m\n", args...)
+	}
+}
+
 // Infof logs something
 func (l *defaultLogger) Infof(format string, args ...interface{}) {
 	if l.logLevel >= LogLevelInfo {
@@ -85,10 +101,11 @@ func (l *defaultLogger) logMessage(format string, args ...interface{}) {
 	var pre string
 
 	if len(l.timeFormat) > 0 {
+		fmt.Println("timeFormat != nil")
 		pre = time.Now().Format(l.timeFormat) + " "
 	}
 	if len(l.prefix) > 0 {
-		pre += l.prefix + " "
+		pre += "[" + l.prefix + "]" + " "
 	}
 	log.Printf(pre+format, args...)
 }

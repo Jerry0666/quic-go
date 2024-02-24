@@ -229,7 +229,7 @@ func (h *sentPacketHandler) packetsInFlight() int {
 }
 
 func (h *sentPacketHandler) SentPacket(p *Packet) {
-	fmt.Println("sentPacketHandler SentPacket")
+	utils.DebugLogEnterfunc("[sentPacketHandler] SentPacket.")
 	h.bytesSent += p.Length
 	// For the client, drop the Initial packet number space when the first Handshake packet is sent.
 	if h.perspective == protocol.PerspectiveClient && p.EncryptionLevel == protocol.EncryptionHandshake && h.initialPackets != nil {

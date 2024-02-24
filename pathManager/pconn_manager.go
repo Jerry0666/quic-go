@@ -1,7 +1,6 @@
 package pathmanager
 
 import (
-	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -87,8 +86,8 @@ func (pcm *PconnManager) CreateMultipath() error {
 		}
 	}
 
-	fmt.Println("local addrs:")
-	fmt.Println(pcm.LocalAddrs)
+	utils.DebugNormolLog("local addrs:")
+	utils.DebugNormolLog("%v", pcm.LocalAddrs)
 
 	return nil
 }

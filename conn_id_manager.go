@@ -70,8 +70,8 @@ func (h *connIDManager) Add(f *wire.NewConnectionIDFrame) error {
 }
 
 func (h *connIDManager) add(f *wire.NewConnectionIDFrame) error {
-	fmt.Println("connIDManager add!")
-	fmt.Printf("conn id:%v\n", f.ConnectionID)
+	utils.DebugLogEnterfunc("[connIDManager] add.")
+	utils.DebugNormolLog("conn id:%v", f.ConnectionID)
 	// If the NEW_CONNECTION_ID frame is reordered, such that its sequence number is smaller than the currently active
 	// connection ID or if it was already retired, send the RETIRE_CONNECTION_ID frame immediately.
 	if f.SequenceNumber < h.activeSequenceNumber || f.SequenceNumber < h.highestRetired {
@@ -149,7 +149,7 @@ func (h *connIDManager) addConnectionID(seq uint64, connID protocol.ConnectionID
 }
 
 func (h *connIDManager) updateConnectionID() {
-	fmt.Println("updateConnectionID!")
+	utils.DebugLogEnterfunc("[connIDManager] updateConnectionID.")
 	h.queueControlFrame(&wire.RetireConnectionIDFrame{
 		SequenceNumber: h.activeSequenceNumber,
 	})
@@ -159,7 +159,6 @@ func (h *connIDManager) updateConnectionID() {
 	}
 
 	front := h.queue.Remove(h.queue.Front())
-	fmt.Printf("connection id:%v\n", front.ConnectionID)
 	//add the second path connection id
 	secondConnID := h.queue.Remove(h.queue.Front())
 	h.secondPathConnectionID = secondConnID.ConnectionID
@@ -216,16 +215,14 @@ func (h *connIDManager) shouldUpdateConnID() bool {
 }
 
 func (h *connIDManager) Get() protocol.ConnectionID {
-	fmt.Println("Get!")
 	if h.shouldUpdateConnID() {
-		fmt.Println("h.shouldUpdateConnID()")
 		h.updateConnectionID()
 	}
 	return h.activeConnectionID
 }
 
 func (h *connIDManager) GetSecondConn() protocol.ConnectionID {
-	fmt.Println("Get the second conn!")
+	utils.DebugLogEnterfunc("[connIDManager] GetSecondConn.")
 	return h.secondPathConnectionID
 }
 

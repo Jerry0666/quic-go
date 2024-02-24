@@ -172,7 +172,6 @@ func (h *ExtendedHeader) GetLength(_ protocol.VersionNumber) protocol.ByteCount 
 
 // Log logs the Header
 func (h *ExtendedHeader) Log(logger utils.Logger) {
-	fmt.Println("Extended Header Log")
 	var token string
 	if h.Type == protocol.PacketTypeInitial || h.Type == protocol.PacketTypeRetry {
 		if len(h.Token) == 0 {
