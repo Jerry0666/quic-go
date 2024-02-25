@@ -24,6 +24,13 @@ import (
 	"github.com/quic-go/quic-go/logging"
 )
 
+const (
+	PathValidation_non = iota
+	PathValidation_started
+	PathValidation_Inprogress
+	PathValidation_finished
+)
+
 type unpacker interface {
 	UnpackLongHeader(hdr *wire.Header, rcvTime time.Time, data []byte, v protocol.VersionNumber) (*unpackedPacket, error)
 	UnpackShortHeader(rcvTime time.Time, data []byte) (protocol.PacketNumber, protocol.PacketNumberLen, protocol.KeyPhaseBit, []byte, error)
@@ -224,6 +231,11 @@ type connection struct {
 	logID  string
 	tracer logging.ConnectionTracer
 	logger utils.Logger
+
+	// Path validation
+	PathValidationLock   sync.Mutex
+	PathValidationState  int
+	PathValidationframer framerPV
 }
 
 var (
@@ -264,6 +276,7 @@ var newConnection = func(
 		tracer:                tracer,
 		logger:                logger,
 		version:               v,
+		PathValidationState:   PathValidation_non,
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -353,7 +366,10 @@ var newConnection = func(
 		s.version,
 	)
 	s.cryptoStreamHandler = cs
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	//set the packer
+	packer := newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	packer.Conn = s
+	s.packer = packer
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, s.oneRTTStream)
 	return s
@@ -1348,8 +1364,9 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 	case *wire.PathChallengeFrame:
 		s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
+		utils.TemporaryLog("receive PathResponseFrame")
 		// since we don't send PATH_CHALLENGEs, we don't expect PATH_RESPONSEs
-		err = errors.New("unexpected PATH_RESPONSE frame")
+		//err = errors.New("unexpected PATH_RESPONSE frame")
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
@@ -1470,8 +1487,11 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
-	fmt.Println("handle Path Challenge Frame!")
-	//s.queueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+	utils.TemporaryLog("handle Path Challenge Frame!")
+	s.PathValidationLock.Lock()
+	s.PathValidationState = PathValidation_started
+	s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+	s.PathValidationLock.Unlock()
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
@@ -1978,7 +1998,6 @@ func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhan
 }
 
 func (s *connection) sendPackedShortHeaderPacket2(buffer *packetBuffer, p *ackhandler.Packet, now time.Time) {
-	fmt.Println("sendPackedShortHeaderPacket2")
 	if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && ackhandler.HasAckElicitingFrames(p.Frames) {
 		s.firstAckElicitingPacketAfterIdleSentTime = now
 	}

@@ -121,7 +121,7 @@ func (h *sendQueue) Run() error {
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
 		case p := <-h.queue2:
-			fmt.Println("receive from queue2!")
+			utils.TemporaryLog("receive from queue2!")
 			err := h.conn2.Write(p.Data)
 			if err != nil {
 				// This additional check enables:

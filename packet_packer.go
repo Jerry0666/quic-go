@@ -173,6 +173,9 @@ type packetPacker struct {
 
 	maxPacketSize          protocol.ByteCount
 	numNonAckElicitingAcks int
+
+	//the connection ths packer belong to
+	Conn *connection
 }
 
 var _ packer = &packetPacker{}
@@ -496,6 +499,11 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
+	p.Conn.PathValidationLock.Lock()
+	if p.Conn.PathValidationState == PathValidation_started {
+		utils.TemporaryLog("pathvalidation started, pack the related frame")
+	}
+	p.Conn.PathValidationLock.Unlock()
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, p.maxPacketSize, onlyAck, true, v)
 	//check if it is path validation
 	IspathValidation := isPathChallengeFrame(pl.frames)
@@ -646,6 +654,15 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	}
 
 	pl := payload{frames: make([]*ackhandler.Frame, 0, 1)}
+
+	//already locked
+	if p.Conn.PathValidationState == PathValidation_started {
+		utils.TemporaryLog("PathValidation pack the challenge frame.")
+		var lengthAdded protocol.ByteCount
+		pl.frames, lengthAdded = p.Conn.PathValidationframer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
+		pl.length += lengthAdded
+		return pl
+	}
 
 	hasData := p.framer.HasData()
 	hasRetransmission := p.retransmissionQueue.HasAppData()

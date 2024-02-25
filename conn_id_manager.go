@@ -109,7 +109,7 @@ func (h *connIDManager) add(f *wire.NewConnectionIDFrame) error {
 	// Retire the active connection ID, if necessary.
 	if h.activeSequenceNumber < f.RetirePriorTo {
 		// The queue is guaranteed to have at least one element at this point.
-		fmt.Println("h.updateConnectionID()")
+
 		h.updateConnectionID()
 	}
 	return nil

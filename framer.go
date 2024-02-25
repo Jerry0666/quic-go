@@ -23,6 +23,39 @@ type framer interface {
 	Handle0RTTRejection() error
 }
 
+//framer for the path validation
+type framerPV struct {
+	controlFrameMutex sync.Mutex
+	controlFrames     []wire.Frame
+}
+
+func (f *framerPV) QueueControlFrame(frame wire.Frame) {
+	utils.TemporaryLog("[framerPV] QueueControlFrame")
+	f.controlFrameMutex.Lock()
+	f.controlFrames = append(f.controlFrames, frame)
+	f.controlFrameMutex.Unlock()
+}
+
+func (f *framerPV) AppendControlFrames(frames []*ackhandler.Frame, maxLen protocol.ByteCount, v protocol.VersionNumber) ([]*ackhandler.Frame, protocol.ByteCount) {
+	var length protocol.ByteCount
+	f.controlFrameMutex.Lock()
+	for len(f.controlFrames) > 0 {
+		//take out the last one
+		frame := f.controlFrames[len(f.controlFrames)-1]
+		frameLen := frame.Length(v)
+		if length+frameLen > maxLen {
+			break
+		}
+		af := ackhandler.GetFrame()
+		af.Frame = frame
+		frames = append(frames, af)
+		length += frameLen
+		f.controlFrames = f.controlFrames[:len(f.controlFrames)-1]
+	}
+	f.controlFrameMutex.Unlock()
+	return frames, length
+}
+
 type framerI struct {
 	mutex sync.Mutex
 
@@ -58,7 +91,6 @@ func (f *framerI) HasData() bool {
 }
 
 func (f *framerI) QueueControlFrame(frame wire.Frame) {
-	utils.DebugNormolLog("Queued Control Frame")
 	f.controlFrameMutex.Lock()
 	f.controlFrames = append(f.controlFrames, frame)
 	f.controlFrameMutex.Unlock()
