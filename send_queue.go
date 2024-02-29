@@ -16,14 +16,15 @@ type sender interface {
 }
 
 type sendQueue struct {
-	queue       chan *packetBuffer
-	queue2      chan *packetBuffer
-	closeCalled chan struct{} // runStopped when Close() is called
-	runStopped  chan struct{} // runStopped when the run loop returns
-	available   chan struct{}
-	Test        bool
-	conn        sendConn
-	conn2       sendConn
+	queue        chan *packetBuffer
+	queue2       chan *packetBuffer
+	closeCalled  chan struct{} // runStopped when Close() is called
+	runStopped   chan struct{} // runStopped when the run loop returns
+	available    chan struct{}
+	Test         bool
+	conn         sendConn
+	conn2        sendConn
+	LocalUdpConn net.PacketConn
 }
 
 var _ sender = &sendQueue{}
@@ -61,7 +62,14 @@ func newSendQueueServer(conn sendConn) sender {
 		available:   make(chan struct{}, 1),
 		Test:        false,
 		queue:       make(chan *packetBuffer, sendQueueCapacity),
+		queue2:      make(chan *packetBuffer, sendQueueCapacity),
 	}
+}
+
+func (h *sendQueue) CreateSecondConn(remoteAddr net.Addr) {
+	utils.DebugLogEnterfunc("[sendQueue] CreateSecondConn.")
+	//udpRemodeAddr, _ := net.ResolveUDPAddr("udp", remoteAddr.String())
+
 }
 
 // Send sends out a packet. It's guaranteed to not block.
@@ -122,6 +130,8 @@ func (h *sendQueue) Run() error {
 			shouldClose = true
 		case p := <-h.queue2:
 			utils.TemporaryLog("receive from queue2!")
+			utils.TemporaryLog("local addr:%v", h.conn2.LocalAddr())
+			utils.TemporaryLog("remote addr:%v", h.conn2.RemoteAddr())
 			err := h.conn2.Write(p.Data)
 			if err != nil {
 				// This additional check enables:

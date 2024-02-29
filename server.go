@@ -94,6 +94,8 @@ type baseServer struct {
 		protocol.VersionNumber,
 	) quicConn
 
+	UdpConn net.PacketConn
+
 	serverError error
 	errorChan   chan struct{}
 	closed      bool
@@ -202,6 +204,8 @@ func listen(conn net.PacketConn, tlsConf *tls.Config, config *Config, acceptEarl
 	if err != nil {
 		return nil, err
 	}
+	utils.DebugNormolLog("&baseServer!")
+	utils.DebugNormolLog("set the UdpConn!")
 	s := &baseServer{
 		conn:             c,
 		tlsConf:          tlsConf,
@@ -215,6 +219,7 @@ func listen(conn net.PacketConn, tlsConf *tls.Config, config *Config, acceptEarl
 		newConn:          newConnection,
 		logger:           utils.DefaultLogger.WithPrefix("server"),
 		acceptEarlyConns: acceptEarly,
+		UdpConn:          conn,
 	}
 	go s.run()
 	connHandler.SetServer(s)
@@ -493,6 +498,7 @@ func (s *baseServer) handleInitialImpl(p *receivedPacket, hdr *wire.Header) erro
 				connID,
 			)
 		}
+		utils.DebugNormolLog("set the quicConn!")
 		conn = s.newConn(
 			newSendConn(s.conn, p.remoteAddr, p.info),
 			s.connHandler,
@@ -511,6 +517,12 @@ func (s *baseServer) handleInitialImpl(p *receivedPacket, hdr *wire.Header) erro
 			s.logger,
 			hdr.Version,
 		)
+		c, ok := conn.(*connection)
+		if ok {
+			utils.DebugNormolLog("convert conn to connection, and set the raw conn.")
+			c.LocalRawConn = s.conn
+			c.UdpConn = s.UdpConn
+		}
 		conn.handlePacket(p)
 		return conn
 	}); !added {

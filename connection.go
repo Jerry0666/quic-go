@@ -153,8 +153,12 @@ type connection struct {
 	version     protocol.VersionNumber
 	config      *Config
 
-	conn      sendConn
-	sendQueue sender
+	conn         sendConn
+	sendQueue    sender
+	LocalRawConn rawConn
+	//the second connection for connection migration
+	conn2   sendConn
+	UdpConn net.PacketConn
 
 	streamsMap      streamManager
 	connIDManager   *connIDManager
@@ -236,6 +240,8 @@ type connection struct {
 	PathValidationLock   sync.Mutex
 	PathValidationState  int
 	PathValidationframer framerPV
+
+	SecondRemoteAddr net.Addr
 }
 
 var (
@@ -264,6 +270,7 @@ var newConnection = func(
 	logger utils.Logger,
 	v protocol.VersionNumber,
 ) quicConn {
+	utils.DebugNormolLog("newConnection.")
 	s := &connection{
 		conn:                  conn,
 		config:                conf,
@@ -366,7 +373,7 @@ var newConnection = func(
 		s.version,
 	)
 	s.cryptoStreamHandler = cs
-	//set the packer
+	//set the packer, make the connection pointer point back to this connection.
 	packer := newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
 	packer.Conn = s
 	s.packer = packer
@@ -391,6 +398,7 @@ var newClientConnection = func(
 	logger utils.Logger,
 	v protocol.VersionNumber,
 ) quicConn {
+	utils.DebugLogEnterfunc("newClientConnection.")
 	s := &connection{
 		conn:                  conn,
 		config:                conf,
@@ -404,6 +412,7 @@ var newClientConnection = func(
 		tracer:                tracer,
 		versionNegotiated:     hasNegotiatedVersion,
 		version:               v,
+		PathValidationState:   PathValidation_non,
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -481,7 +490,9 @@ var newClientConnection = func(
 	s.cryptoStreamHandler = cs
 	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, newCryptoStream())
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
-	s.packer = newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	packer := newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	packer.Conn = s
+	s.packer = packer
 	//set the second conn id
 	p, ok := s.packer.(*packetPacker)
 	if ok {
@@ -1335,6 +1346,7 @@ func (s *connection) handleFrames(
 }
 
 func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel, destConnID protocol.ConnectionID) error {
+	utils.DebugLogEnterfunc("[connection] handleFrame")
 	var err error
 	wire.LogFrame(s.logger, f, false)
 	switch frame := f.(type) {
@@ -1758,6 +1770,7 @@ func (s *connection) checkTransportParameters(params *wire.TransportParameters) 
 }
 
 func (s *connection) applyTransportParameters() {
+	utils.DebugLogEnterfunc("[connection] applyTransportParameters.")
 	params := s.peerParams
 	// Our local idle timeout will always be > 0.
 	s.idleTimeout = utils.MinNonZeroDuration(s.config.MaxIdleTimeout, params.MaxIdleTimeout)
@@ -1767,6 +1780,7 @@ func (s *connection) applyTransportParameters() {
 	s.frameParser.SetAckDelayExponent(params.AckDelayExponent)
 	s.connFlowController.UpdateSendWindow(params.InitialMaxData)
 	s.rttStats.SetMaxAckDelay(params.MaxAckDelay)
+	utils.DebugNormolLog("conn limit:%d", params.ActiveConnectionIDLimit)
 	s.connIDGenerator.SetMaxActiveConnIDs(params.ActiveConnectionIDLimit)
 	if params.StatelessResetToken != nil {
 		s.connIDManager.SetStatelessResetToken(*params.StatelessResetToken)
@@ -1949,6 +1963,12 @@ func (s *connection) sendPacket() (bool, error) {
 	s.logShortHeaderPacket(p.DestConnID, p.Ack, p.Frames, p.PacketNumber, p.PacketNumberLen, p.KeyPhase, buffer.Len(), false)
 	frames := p.Frames
 	ans := isPathChallengeFrame(frames)
+	s.PathValidationLock.Lock()
+	if s.PathValidationState == PathValidation_Inprogress {
+		ans = true
+		s.PathValidationState = PathValidation_finished
+	}
+	s.PathValidationLock.Unlock()
 	if ans {
 		s.sendPackedShortHeaderPacket2(buffer, p.Packet, now)
 	} else {

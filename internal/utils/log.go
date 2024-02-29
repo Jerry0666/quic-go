@@ -89,6 +89,12 @@ func TemporaryLog(format string, args ...interface{}) {
 	}
 }
 
+func DebugLogErr(format string, args ...interface{}) {
+	if globalLogLevel == LogLevelDebug {
+		fmt.Printf("\033[31m"+format+"\033[0m\n", args...)
+	}
+}
+
 // Infof logs something
 func (l *defaultLogger) Infof(format string, args ...interface{}) {
 	if l.logLevel >= LogLevelInfo {

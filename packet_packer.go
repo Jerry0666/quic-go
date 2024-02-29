@@ -498,6 +498,7 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
+	utils.TemporaryLog("connID:%v", connID)
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	p.Conn.PathValidationLock.Lock()
 	if p.Conn.PathValidationState == PathValidation_started {
@@ -656,11 +657,15 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	pl := payload{frames: make([]*ackhandler.Frame, 0, 1)}
 
 	//already locked
+	if p.Conn == nil {
+		utils.TemporaryLog("conn is nil")
+	}
 	if p.Conn.PathValidationState == PathValidation_started {
 		utils.TemporaryLog("PathValidation pack the challenge frame.")
 		var lengthAdded protocol.ByteCount
 		pl.frames, lengthAdded = p.Conn.PathValidationframer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded
+		p.Conn.PathValidationState = PathValidation_Inprogress
 		return pl
 	}
 

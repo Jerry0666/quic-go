@@ -51,7 +51,9 @@ func newConnIDGenerator(
 }
 
 func (m *connIDGenerator) SetMaxActiveConnIDs(limit uint64) error {
+	utils.DebugLogEnterfunc("[connIDGenerator] SetMaxActiveConnIDs.")
 	if m.generator.ConnectionIDLen() == 0 {
+		utils.DebugNormolLog("conn id == nil")
 		return nil
 	}
 	// The active_connection_id_limit transport parameter is the number of
@@ -60,6 +62,8 @@ func (m *connIDGenerator) SetMaxActiveConnIDs(limit uint64) error {
 	// transport parameter.
 	// We currently don't send the preferred_address transport parameter,
 	// so we can issue (limit - 1) connection IDs.
+	utils.DebugNormolLog("len of activeSrcConnIDs:%d", len(m.activeSrcConnIDs))
+	utils.DebugNormolLog("limit:%d", limit)
 	for i := uint64(len(m.activeSrcConnIDs)); i < utils.Min(limit, protocol.MaxIssuedConnectionIDs); i++ {
 		if err := m.issueNewConnID(); err != nil {
 			return err
@@ -96,6 +100,7 @@ func (m *connIDGenerator) Retire(seq uint64, sentWithDestConnID protocol.Connect
 }
 
 func (m *connIDGenerator) issueNewConnID() error {
+	utils.DebugLogEnterfunc("[connIDGenerator] issueNewConnID.")
 	connID, err := m.generator.GenerateConnectionID()
 	if err != nil {
 		return err

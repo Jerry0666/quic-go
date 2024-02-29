@@ -383,6 +383,7 @@ func (h *packetHandlerMap) listen() {
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	connID, err := wire.ParseConnectionID(p.data, h.connIDLen)
+	utils.DebugLogEnterfunc("[packetHandlerMap] handlePacket.")
 	utils.DebugNormolLog("remote ip:%s", p.remoteAddr.String())
 	utils.DebugNormolLog("connID: %s", connID.String())
 	if err != nil {
@@ -401,6 +402,11 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 		return
 	}
 
+	utils.TemporaryLog("see all connection id")
+	for k, _ := range h.handlers {
+		utils.TemporaryLog("[%v]\t", k.String())
+	}
+
 	if handler, ok := h.handlers[connID]; ok {
 		if ha, ok := handler.(*zeroRTTQueue); ok { // only enqueue 0-RTT packets in the 0-RTT queue
 			if wire.Is0RTTPacket(p.data) {
@@ -408,6 +414,24 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 				return
 			}
 		} else { // existing connection
+			h, ok := handler.(*connection)
+			if ok {
+				if h.RemoteAddr().String() != p.remoteAddr.String() {
+					utils.TemporaryLog("receive packet from another ip addr!")
+					h.SecondRemoteAddr = p.remoteAddr
+					utils.TemporaryLog("set the second conn")
+					utils.TemporaryLog("use newSendPconn")
+					utils.TemporaryLog("h.UdpConn:%#v", h.UdpConn)
+					utils.TemporaryLog("h.SecondRemoteAddr:%#v", h.SecondRemoteAddr)
+					h.conn2 = newSendPconn(h.UdpConn, h.SecondRemoteAddr)
+					sendQ, ok := h.sendQueue.(*sendQueue)
+					if ok {
+						sendQ.conn2 = h.conn2
+						//utils.TemporaryLog("sendQueue conn2 localaddr:%v", sendQ.conn2.LocalAddr())
+						//utils.TemporaryLog("sendQueue conn2 remoteaddr:%v", sendQ.conn2.RemoteAddr())
+					}
+				}
+			}
 			handler.handlePacket(p)
 			return
 		}

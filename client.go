@@ -282,7 +282,7 @@ func newClient(
 
 func (c *client) dial(ctx context.Context) error {
 	c.logger.Infof("Starting new connection to %s (%s -> %s), source connection ID %s, destination connection ID %s, version %s", c.tlsConf.ServerName, c.sconn.LocalAddr(), c.sconn.RemoteAddr(), c.srcConnID, c.destConnID, c.version)
-
+	utils.DebugNormolLog("client set the connection")
 	c.conn = newClientConnection(
 		c.sconn,
 		c.packetHandlers,
