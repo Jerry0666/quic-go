@@ -53,7 +53,6 @@ func (q *retransmissionQueue) HasAppData() bool {
 func (q *retransmissionQueue) AddAppData(f wire.Frame) {
 	utils.DebugLogEnterfunc("[retransmissionQueue] AddAppData.")
 	if checkResponseFrame(f) {
-		utils.TemporaryLog("[retransmissionQueue] add path response.")
 		return
 	}
 

@@ -492,15 +492,12 @@ func (p *packetPacker) PackCoalescedPacket(onlyAck bool, v protocol.VersionNumbe
 // It should be called after the handshake is confirmed.
 func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.VersionNumber) (shortHeaderPacket, *packetBuffer, error) {
 	utils.DebugLogEnterfunc("[packetPacker] PackPacket.")
-	utils.TemporaryLog("framer:%v", p.Conn.framer)
-	utils.TemporaryLog("PathValidationframer:%v", p.Conn.PathValidationframer.controlFrames)
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, nil, err
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
-	utils.TemporaryLog("connID:%v", connID)
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	p.Conn.PathValidationLock.Lock()
 	if p.Conn.PathValidationState == PathValidation_started {
@@ -704,7 +701,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	}
 
 	if p.datagramQueue != nil {
-		utils.DebugNormolLog("datagramQueue !=nil")
 		if f := p.datagramQueue.Peek(); f != nil {
 			size := f.Length(v)
 			if size <= maxFrameSize-pl.length {

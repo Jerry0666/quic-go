@@ -402,11 +402,6 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 		return
 	}
 
-	utils.TemporaryLog("see all connection id")
-	for k, _ := range h.handlers {
-		utils.TemporaryLog("[%v]\t", k.String())
-	}
-
 	if handler, ok := h.handlers[connID]; ok {
 		if ha, ok := handler.(*zeroRTTQueue); ok { // only enqueue 0-RTT packets in the 0-RTT queue
 			if wire.Is0RTTPacket(p.data) {
