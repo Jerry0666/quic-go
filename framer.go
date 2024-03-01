@@ -91,6 +91,7 @@ func (f *framerI) HasData() bool {
 }
 
 func (f *framerI) QueueControlFrame(frame wire.Frame) {
+	utils.DebugLogEnterfunc("[framerI] QueueControlFrame.")
 	f.controlFrameMutex.Lock()
 	f.controlFrames = append(f.controlFrames, frame)
 	f.controlFrameMutex.Unlock()

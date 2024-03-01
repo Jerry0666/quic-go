@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/quic-go/quic-go/internal/protocol"
+	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 )
 
@@ -50,6 +51,12 @@ func (q *retransmissionQueue) HasAppData() bool {
 }
 
 func (q *retransmissionQueue) AddAppData(f wire.Frame) {
+	utils.DebugLogEnterfunc("[retransmissionQueue] AddAppData.")
+	if checkResponseFrame(f) {
+		utils.TemporaryLog("[retransmissionQueue] add path response.")
+		return
+	}
+
 	if _, ok := f.(*wire.StreamFrame); ok {
 		panic("STREAM frames are handled with their respective streams.")
 	}

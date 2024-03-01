@@ -492,6 +492,8 @@ func (p *packetPacker) PackCoalescedPacket(onlyAck bool, v protocol.VersionNumbe
 // It should be called after the handshake is confirmed.
 func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.VersionNumber) (shortHeaderPacket, *packetBuffer, error) {
 	utils.DebugLogEnterfunc("[packetPacker] PackPacket.")
+	utils.TemporaryLog("framer:%v", p.Conn.framer)
+	utils.TemporaryLog("PathValidationframer:%v", p.Conn.PathValidationframer.controlFrames)
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, nil, err
@@ -508,6 +510,11 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, p.maxPacketSize, onlyAck, true, v)
 	//check if it is path validation
 	IspathValidation := isPathChallengeFrame(pl.frames)
+	//check if it is path response
+	if isPathResponseFrame(pl.frames) {
+		utils.TemporaryLog("It is path response")
+	}
+
 	if IspathValidation {
 		connID = p.getDestConnID2()
 	}
@@ -644,6 +651,7 @@ func (p *packetPacker) maybeGetAppDataPacket(maxPayloadSize protocol.ByteCount, 
 }
 
 func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAck, ackAllowed bool, v protocol.VersionNumber) payload {
+	utils.DebugLogEnterfunc("[packetPacker] composeNextPacket.")
 	if onlyAck {
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, true); ack != nil {
 			return payload{
@@ -656,10 +664,10 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 
 	pl := payload{frames: make([]*ackhandler.Frame, 0, 1)}
 
-	//already locked
 	if p.Conn == nil {
 		utils.TemporaryLog("conn is nil")
 	}
+	//already locked
 	if p.Conn.PathValidationState == PathValidation_started {
 		utils.TemporaryLog("PathValidation pack the challenge frame.")
 		var lengthAdded protocol.ByteCount
@@ -674,6 +682,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 
 	if hasData {
 		var lengthAdded protocol.ByteCount
+		utils.DebugNormolLog("framer AppendControlFrames")
 		pl.frames, lengthAdded = p.framer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded
 		if isPathChallengeFrame(pl.frames) {
@@ -686,6 +695,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 
 	var hasAck bool
 	if ackAllowed {
+		utils.DebugNormolLog("ackAllowed!")
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, !hasRetransmission && !hasData); ack != nil {
 			pl.ack = ack
 			pl.length += ack.Length(v)
@@ -694,6 +704,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	}
 
 	if p.datagramQueue != nil {
+		utils.DebugNormolLog("datagramQueue !=nil")
 		if f := p.datagramQueue.Peek(); f != nil {
 			size := f.Length(v)
 			if size <= maxFrameSize-pl.length {
@@ -713,6 +724,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	}
 
 	if hasRetransmission {
+		utils.DebugNormolLog("hasRetransmission!")
 		for {
 			remainingLen := maxFrameSize - pl.length
 			if remainingLen < protocol.MinStreamFrameSize {
@@ -721,6 +733,9 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 			f := p.retransmissionQueue.GetAppDataFrame(remainingLen, v)
 			if f == nil {
 				break
+			}
+			if checkResponseFrame(f) {
+				utils.DebugNormolLog("retransmissionQueue has path response.")
 			}
 			af := ackhandler.GetFrame()
 			af.Frame = f

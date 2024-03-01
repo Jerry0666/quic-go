@@ -1989,6 +1989,18 @@ func isPathChallengeFrame(frames []*ackhandler.Frame) bool {
 	return ans
 }
 
+func isPathResponseFrame(frames []*ackhandler.Frame) bool {
+	ans := false
+	for _, frame := range frames {
+		if checkResponseFrame(frame.Frame) {
+			ans = true
+			break
+		}
+	}
+
+	return ans
+}
+
 func findPathChallengeFrame(frames []wire.Frame) int {
 	for i, frame := range frames {
 		if checkChallengeFrame(frame) {
@@ -2000,6 +2012,15 @@ func findPathChallengeFrame(frames []wire.Frame) int {
 
 func checkChallengeFrame(frame wire.Frame) bool {
 	_, ok := frame.(*wire.PathChallengeFrame)
+	if ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func checkResponseFrame(frame wire.Frame) bool {
+	_, ok := frame.(*wire.PathResponseFrame)
 	if ok {
 		return true
 	} else {

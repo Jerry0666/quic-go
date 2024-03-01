@@ -134,10 +134,6 @@ func (h *sendQueue) Run() error {
 			utils.TemporaryLog("remote addr:%v", h.conn2.RemoteAddr())
 			err := h.conn2.Write(p.Data)
 			if err != nil {
-				// This additional check enables:
-				// 1. Checking for "datagram too large" message from the kernel, as such,
-				// 2. Path MTU discovery,and
-				// 3. Eventual detection of loss PingFrame.
 				if !isMsgSizeErr(err) {
 					return err
 				}
@@ -148,13 +144,8 @@ func (h *sendQueue) Run() error {
 			default:
 			}
 		case p := <-h.queue:
-			if testSecondConn {
-				err := h.conn2.Write(p.Data)
-				if err != nil {
-					fmt.Println("conn2 send error")
-					fmt.Println(err)
-				}
-			} else if err := h.conn.Write(p.Data); err != nil {
+			err := h.conn.Write(p.Data)
+			if err != nil {
 				// This additional check enables:
 				// 1. Checking for "datagram too large" message from the kernel, as such,
 				// 2. Path MTU discovery,and
