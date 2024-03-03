@@ -499,11 +499,16 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
-	p.Conn.PathValidationLock.Lock()
-	if p.Conn.PathValidationState == PathValidation_started {
-		utils.TemporaryLog("pathvalidation started, pack the related frame")
+
+	if p.Conn.PathValidationState == PVstate_PackPacket {
+		p.Conn.PathValidationLock.Lock()
+		utils.TemporaryLog("now Path Validation State is PVstate_PackPacket")
+		connID = p.getDestConnID2()
+		p.Conn.PathValidationState = PVstate_composeNextPacket
+		utils.TemporaryLog("change the state to PVstate_composeNextPacket")
+		p.Conn.PathValidationLock.Unlock()
 	}
-	p.Conn.PathValidationLock.Unlock()
+
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, p.maxPacketSize, onlyAck, true, v)
 	//check if it is path validation
 	IspathValidation := isPathChallengeFrame(pl.frames)
@@ -665,12 +670,16 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 		utils.TemporaryLog("conn is nil")
 	}
 	//already locked
-	if p.Conn.PathValidationState == PathValidation_started {
-		utils.TemporaryLog("PathValidation pack the challenge frame.")
+	if p.Conn.PathValidationState == PVstate_composeNextPacket {
+		p.Conn.PathValidationLock.Lock()
+		utils.TemporaryLog("now Path Validation State is PVstate_composeNextPacket")
 		var lengthAdded protocol.ByteCount
 		pl.frames, lengthAdded = p.Conn.PathValidationframer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded
-		p.Conn.PathValidationState = PathValidation_Inprogress
+		p.Conn.PathValidationState = PVstate_sendPacket
+		utils.TemporaryLog("change the state to PVstate_sendPacket")
+		utils.TemporaryLog("pack %d frames", len(pl.frames))
+		p.Conn.PathValidationLock.Unlock()
 		return pl
 	}
 

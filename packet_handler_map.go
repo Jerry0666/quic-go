@@ -454,6 +454,10 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 			h, ok := handler.(*connection)
 			if ok {
 				if h.RemoteAddr().String() != p.remoteAddr.String() {
+					if h.SecondRemoteAddr != nil && h.SecondRemoteAddr.String() == p.remoteAddr.String() {
+						utils.TemporaryLog("second remote addr already been set.")
+						goto AfterSetSecondRemoteAddr
+					}
 					utils.TemporaryLog("receive packet from another ip addr!")
 					h.SecondRemoteAddr = p.remoteAddr
 					utils.TemporaryLog("set the second conn")
@@ -469,6 +473,7 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 					}
 				}
 			}
+		AfterSetSecondRemoteAddr:
 			handler.handlePacket(p)
 			return
 		}

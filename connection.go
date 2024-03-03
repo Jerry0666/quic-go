@@ -24,11 +24,15 @@ import (
 	"github.com/quic-go/quic-go/logging"
 )
 
+//Because there are many functions involved in packet selection,
+//composition, and sending, I use the following status to indicate which
+//function should be executed now in path validation, and ensure that
+//each function will only be executed once.
 const (
-	PathValidation_non = iota
-	PathValidation_started
-	PathValidation_Inprogress
-	PathValidation_finished
+	PVstate_non               = iota
+	PVstate_PackPacket        //choice the second conn id.
+	PVstate_composeNextPacket //pack the path validation related frames.
+	PVstate_sendPacket        //use the second connection to transmit.
 )
 
 type unpacker interface {
@@ -285,7 +289,7 @@ var newConnection = func(
 		tracer:                tracer,
 		logger:                logger,
 		version:               v,
-		PathValidationState:   PathValidation_non,
+		PathValidationState:   PVstate_non,
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -379,6 +383,12 @@ var newConnection = func(
 	packer := newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
 	packer.Conn = s
 	s.packer = packer
+	//set the second conn id
+	p, ok := s.packer.(*packetPacker)
+	if ok {
+		utils.TemporaryLog("set the second conn id!")
+		p.SetSecondConn(s.connIDManager.GetSecondConn)
+	}
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, s.oneRTTStream)
 	return s
@@ -414,7 +424,7 @@ var newClientConnection = func(
 		tracer:                tracer,
 		versionNegotiated:     hasNegotiatedVersion,
 		version:               v,
-		PathValidationState:   PathValidation_non,
+		PathValidationState:   PVstate_non,
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -1509,10 +1519,17 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
+	if s.perspective == protocol.PerspectiveClient {
+		utils.TemporaryLog("client receive path challenge!")
+		return
+	}
 	utils.TemporaryLog("handle Path Challenge Frame!")
 	s.PathValidationLock.Lock()
-	s.PathValidationState = PathValidation_started
+	s.PathValidationState = PVstate_PackPacket
 	s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+	data := [8]byte{0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02}
+	path_ch := wire.PathChallengeFrame{Data: data}
+	s.PathValidationframer.QueueControlFrame(&path_ch)
 	s.PathValidationLock.Unlock()
 }
 
@@ -1984,12 +2001,14 @@ func (s *connection) sendPacket() (bool, error) {
 	s.logShortHeaderPacket(p.DestConnID, p.Ack, p.Frames, p.PacketNumber, p.PacketNumberLen, p.KeyPhase, buffer.Len(), false)
 	frames := p.Frames
 	ans := isPathChallengeFrame(frames)
-	s.PathValidationLock.Lock()
-	if s.PathValidationState == PathValidation_Inprogress {
+	if s.PathValidationState == PVstate_sendPacket {
+		s.PathValidationLock.Lock()
+		utils.TemporaryLog("now Path Validation State is PVstate_sendPacket")
 		ans = true
-		s.PathValidationState = PathValidation_finished
+		s.PathValidationState = PVstate_non
+		utils.TemporaryLog("finish send a pathvalidation packet!")
+		s.PathValidationLock.Unlock()
 	}
-	s.PathValidationLock.Unlock()
 	if ans {
 		s.sendPackedShortHeaderPacket2(buffer, p.Packet, now)
 	} else {

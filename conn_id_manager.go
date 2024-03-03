@@ -160,8 +160,10 @@ func (h *connIDManager) updateConnectionID() {
 
 	front := h.queue.Remove(h.queue.Front())
 	//add the second path connection id
+	utils.TemporaryLog("set the second path conn id")
 	secondConnID := h.queue.Remove(h.queue.Front())
 	h.secondPathConnectionID = secondConnID.ConnectionID
+	utils.TemporaryLog("second connection id:%v", h.secondPathConnectionID)
 
 	h.activeSequenceNumber = front.SequenceNumber
 	h.activeConnectionID = front.ConnectionID
@@ -222,7 +224,6 @@ func (h *connIDManager) Get() protocol.ConnectionID {
 }
 
 func (h *connIDManager) GetSecondConn() protocol.ConnectionID {
-	utils.DebugLogEnterfunc("[connIDManager] GetSecondConn.")
 	return h.secondPathConnectionID
 }
 
