@@ -1388,7 +1388,7 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
 		utils.TemporaryLog("receive PathResponseFrame!")
-
+		s.handlePathResponseFrame(frame)
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
@@ -1514,6 +1514,18 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 	s.PathValidationState = PathValidation_started
 	s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
 	s.PathValidationLock.Unlock()
+}
+
+func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
+	utils.TemporaryLog("data:%v", frame)
+	for i, b := range frame.Data {
+		if b != s.challengeData[i] {
+			utils.DebugLogErr("path challenge fail!")
+			utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.challengeData[i], i)
+			return
+		}
+	}
+	utils.TemporaryLog("path challenge success!")
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
