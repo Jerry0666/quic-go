@@ -692,7 +692,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 
 	var hasAck bool
 	if ackAllowed {
-		utils.DebugNormolLog("ackAllowed!")
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, !hasRetransmission && !hasData); ack != nil {
 			pl.ack = ack
 			pl.length += ack.Length(v)

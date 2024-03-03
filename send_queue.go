@@ -38,13 +38,8 @@ func UseSecondQueue(s sender, p *packetBuffer) {
 }
 
 func newSendQueue(conn sendConn) sender {
-	udpConn, _ := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 0})
-	utils.DebugNormolLog("create the second udp connection, addr:%s", udpConn.LocalAddr().String())
-	udpAddr, _ := net.ResolveUDPAddr("udp", "100.0.0.1:30000")
-	c2 := newSendPconn(udpConn, udpAddr)
 	return &sendQueue{
 		conn:        conn,
-		conn2:       c2,
 		runStopped:  make(chan struct{}),
 		closeCalled: make(chan struct{}),
 		available:   make(chan struct{}, 1),
@@ -52,6 +47,10 @@ func newSendQueue(conn sendConn) sender {
 		queue:       make(chan *packetBuffer, sendQueueCapacity),
 		queue2:      make(chan *packetBuffer, sendQueueCapacity),
 	}
+}
+
+func (h *sendQueue) SetSecondConn(conn2 sendConn) {
+	h.conn2 = conn2
 }
 
 func newSendQueueServer(conn sendConn) sender {

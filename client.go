@@ -197,11 +197,19 @@ func dialContext(
 		return nil, err
 	}
 	config = populateClientConfig(config, createdPacketConn)
+	conn2, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 0})
 	packetHandlers, err := getMultiplexer().AddConn(pconn, config.ConnectionIDGenerator.ConnectionIDLen(), config.StatelessResetKey, config.Tracer)
+	//need to add second conn, on packetHandlerMap struct
+	packetMap, ok := packetHandlers.(*packetHandlerMap)
+	if ok {
+		packetMap.setSecondConn(conn2, nil)
+	}
 	if err != nil {
 		return nil, err
 	}
 	c, err := newClient(pconn, remoteAddr, config, tlsConf, host, use0RTT, createdPacketConn)
+	//need to add second conn to client
+	c.setSecondConn(conn2)
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +288,12 @@ func newClient(
 	return c, nil
 }
 
+func (c *client) setSecondConn(pconn2 net.PacketConn) {
+	utils.DebugNormolLog("set the second conn of client")
+	sconn2 := newSendPconn(pconn2, c.sconn.RemoteAddr())
+	c.conn2 = sconn2
+}
+
 func (c *client) dial(ctx context.Context) error {
 	c.logger.Infof("Starting new connection to %s (%s -> %s), source connection ID %s, destination connection ID %s, version %s", c.tlsConf.ServerName, c.sconn.LocalAddr(), c.sconn.RemoteAddr(), c.srcConnID, c.destConnID, c.version)
 	utils.DebugNormolLog("client set the connection")
@@ -299,7 +313,21 @@ func (c *client) dial(ctx context.Context) error {
 		c.version,
 	)
 	c.packetHandlers.Add(c.srcConnID, c.conn)
-
+	if c.conn2 != nil {
+		utils.TemporaryLog("conn2 is already set, set the sendQueue!")
+		clientConn, ok := c.conn.(*connection)
+		if !ok {
+			utils.DebugLogErr("client conn convert error")
+			goto afterSetSecondConn
+		}
+		sendQ, ok := clientConn.sendQueue.(*sendQueue)
+		if !ok {
+			utils.DebugLogErr("sendQ convert error")
+			goto afterSetSecondConn
+		}
+		sendQ.SetSecondConn(c.conn2)
+	}
+afterSetSecondConn:
 	errorChan := make(chan error, 1)
 	go func() {
 		err := c.conn.run() // returns as soon as the connection is closed

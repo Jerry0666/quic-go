@@ -241,6 +241,8 @@ type connection struct {
 	PathValidationState  int
 	PathValidationframer framerPV
 
+	challengeData [8]byte
+
 	SecondRemoteAddr net.Addr
 }
 
@@ -602,6 +604,11 @@ func (s *connection) run() error {
 			time.Sleep(3 * time.Second)
 			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
 			path_ch := wire.PathChallengeFrame{Data: data}
+			//set challenge data to connection
+			s.challengeData = data
+			utils.TemporaryLog("connection data address:%p", &(s.challengeData))
+			utils.TemporaryLog("connection data:%v", s.challengeData)
+			utils.TemporaryLog("data address:%p", &data)
 			utils.DebugNormolLog("challenge frame:")
 			utils.DebugNormolLog("%v", &path_ch)
 			s.framer.QueueControlFrame(&path_ch)
@@ -943,6 +950,9 @@ func (s *connection) handlePacketImpl(rp *receivedPacket) bool {
 			if counter > 0 {
 				p.buffer.Split()
 			}
+			utils.DebugNormolLog("enter handleShortHeaderPacket")
+			//show destConnID here, may be err.
+			destConnID, _ = wire.ParseConnectionID(p.data, s.srcConnIDLen)
 			processed = s.handleShortHeaderPacket(p, destConnID)
 			break
 		}
@@ -953,6 +963,7 @@ func (s *connection) handlePacketImpl(rp *receivedPacket) bool {
 }
 
 func (s *connection) handleShortHeaderPacket(p *receivedPacket, destConnID protocol.ConnectionID) bool {
+	utils.DebugLogEnterfunc("[connection] handleShortHeaderPacket.")
 	var wasQueued bool
 
 	defer func() {
@@ -1376,9 +1387,8 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 	case *wire.PathChallengeFrame:
 		s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
-		utils.TemporaryLog("receive PathResponseFrame")
-		// since we don't send PATH_CHALLENGEs, we don't expect PATH_RESPONSEs
-		//err = errors.New("unexpected PATH_RESPONSE frame")
+		utils.TemporaryLog("receive PathResponseFrame!")
+
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
@@ -1943,7 +1953,6 @@ func (s *connection) sendPacket() (bool, error) {
 		s.sendPackedCoalescedPacket(packet, now)
 		return true, nil
 	} else if !s.config.DisablePathMTUDiscovery && s.mtuDiscoverer.ShouldSendProbe(now) {
-		utils.DebugNormolLog("should send probe.")
 		ping, size := s.mtuDiscoverer.GetPing()
 		p, buffer, err := s.packer.PackMTUProbePacket(ping, size, now, s.version)
 		if err != nil {

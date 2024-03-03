@@ -46,6 +46,9 @@ type packetHandlerMap struct {
 	conn      rawConn
 	connIDLen int
 
+	//the second conn
+	conn2 rawConn
+
 	closeQueue chan closePacket
 
 	handlers          map[protocol.ConnectionID]packetHandler
@@ -79,7 +82,7 @@ func setReceiveBuffer(c net.PacketConn, logger utils.Logger) error {
 		return fmt.Errorf("failed to determine receive buffer size: %w", err)
 	}
 	if size >= protocol.DesiredReceiveBufferSize {
-		logger.Debugf("Conn has receive buffer of %d kiB (wanted: at least %d kiB)", size/1024, protocol.DesiredReceiveBufferSize/1024)
+		utils.DebugLogErr("Conn has receive buffer of %d kiB (wanted: at least %d kiB)", size/1024, protocol.DesiredReceiveBufferSize/1024)
 		return nil
 	}
 	if err := conn.SetReadBuffer(protocol.DesiredReceiveBufferSize); err != nil {
@@ -95,7 +98,7 @@ func setReceiveBuffer(c net.PacketConn, logger utils.Logger) error {
 	if newSize < protocol.DesiredReceiveBufferSize {
 		return fmt.Errorf("failed to sufficiently increase receive buffer size (was: %d kiB, wanted: %d kiB, got: %d kiB)", size/1024, protocol.DesiredReceiveBufferSize/1024, newSize/1024)
 	}
-	logger.Debugf("Increased receive buffer size to %d kiB", newSize/1024)
+	//logger.Debugf("Increased receive buffer size to %d kiB", newSize/1024)
 	return nil
 }
 
@@ -147,6 +150,23 @@ func newPacketHandlerMap(
 		go m.logUsage()
 	}
 	return m, nil
+}
+
+func (h *packetHandlerMap) setSecondConn(c net.PacketConn, logger utils.Logger) error {
+	if err := setReceiveBuffer(c, logger); err != nil {
+		utils.DebugLogErr("setReceiveBuffer err")
+		utils.DebugLogErr("err:%v", err)
+		return err
+	}
+
+	conn, err := wrapConn(c)
+	if err != nil {
+		return err
+	}
+	h.conn2 = conn
+	go h.listen2()
+
+	return nil
 }
 
 func (h *packetHandlerMap) logUsage() {
@@ -381,10 +401,32 @@ func (h *packetHandlerMap) listen() {
 	}
 }
 
+func (h *packetHandlerMap) listen2() {
+	utils.TemporaryLog("[packetHandlerMap] listen2!!!")
+	defer close(h.listening)
+	for {
+		p, err := h.conn2.ReadPacket()
+		//nolint:staticcheck // SA1019 ignore this!
+		// TODO: This code is used to ignore wsa errors on Windows.
+		// Since net.Error.Temporary is deprecated as of Go 1.18, we should find a better solution.
+		// See https://github.com/quic-go/quic-go/issues/1737 for details.
+		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+			h.logger.Debugf("Temporary error reading from conn: %w", err)
+			continue
+		}
+		if err != nil {
+			h.close(err)
+			return
+		}
+		utils.TemporaryLog("receive from conn2!")
+		h.handlePacket(p)
+	}
+}
+
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	connID, err := wire.ParseConnectionID(p.data, h.connIDLen)
 	utils.DebugLogEnterfunc("[packetHandlerMap] handlePacket.")
-	utils.DebugNormolLog("remote ip:%s", p.remoteAddr.String())
+	utils.DebugNormolLog("remote ip:%v", p.remoteAddr)
 	utils.DebugNormolLog("connID: %s", connID.String())
 	if err != nil {
 		h.logger.Debugf("error parsing connection ID on packet from %s: %s", p.remoteAddr, err)

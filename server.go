@@ -205,7 +205,6 @@ func listen(conn net.PacketConn, tlsConf *tls.Config, config *Config, acceptEarl
 		return nil, err
 	}
 	utils.DebugNormolLog("&baseServer!")
-	utils.DebugNormolLog("set the UdpConn!")
 	s := &baseServer{
 		conn:             c,
 		tlsConf:          tlsConf,

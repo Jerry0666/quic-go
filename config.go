@@ -62,7 +62,6 @@ func populateClientConfig(config *Config, createdPacketConn bool) *Config {
 }
 
 func populateConfig(config *Config, defaultConnIDLen int) *Config {
-	utils.DebugLogEnterfunc("populateConfig.")
 	if config == nil {
 		config = &Config{}
 	}
@@ -112,7 +111,6 @@ func populateConfig(config *Config, defaultConnIDLen int) *Config {
 	}
 	connIDGenerator := config.ConnectionIDGenerator
 	if connIDGenerator == nil {
-		utils.DebugNormolLog("connIDGenerator == nil")
 		connIDGenerator = &protocol.DefaultConnectionIDGenerator{ConnLen: conIDLen}
 	}
 
