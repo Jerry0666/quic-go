@@ -2023,8 +2023,8 @@ func (s *connection) sendPacket() (bool, error) {
 		return false, err
 	}
 	s.logShortHeaderPacket(p.DestConnID, p.Ack, p.Frames, p.PacketNumber, p.PacketNumberLen, p.KeyPhase, buffer.Len(), false)
-	frames := p.Frames
-	ans := isPathChallengeFrame(frames)
+
+	ans := false
 	if s.PathValidationState == PVstate_sendPacket {
 		s.PathValidationLock.Lock()
 		utils.TemporaryLog("now Path Validation State is PVstate_sendPacket")

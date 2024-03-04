@@ -499,6 +499,8 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
+	var paddingLen protocol.ByteCount
+	paddingLen = 0
 
 	if p.Conn.PathValidationState == PVstate_PackPacket {
 		p.Conn.PathValidationLock.Lock()
@@ -506,6 +508,7 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 		connID = p.getDestConnID2()
 		p.Conn.PathValidationState = PVstate_composeNextPacket
 		utils.TemporaryLog("change the state to PVstate_composeNextPacket")
+		paddingLen = 1200
 		p.Conn.PathValidationLock.Unlock()
 	}
 
@@ -522,7 +525,7 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	kp := sealer.KeyPhase()
 	buffer := getPacketBuffer()
 	//call appendShortHeaderPacket
-	ap, ack, err := p.appendShortHeaderPacket(buffer, connID, pn, pnLen, kp, pl, 0, sealer, false, v)
+	ap, ack, err := p.appendShortHeaderPacket(buffer, connID, pn, pnLen, kp, pl, paddingLen, sealer, false, v)
 	if err != nil {
 		return shortHeaderPacket{}, nil, err
 	}
