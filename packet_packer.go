@@ -512,10 +512,6 @@ func (p *packetPacker) PackPacket(onlyAck bool, now time.Time, v protocol.Versio
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, p.maxPacketSize, onlyAck, true, v)
 	//check if it is path validation
 	IspathValidation := isPathChallengeFrame(pl.frames)
-	//check if it is path response
-	if isPathResponseFrame(pl.frames) {
-		utils.TemporaryLog("It is path response")
-	}
 
 	if IspathValidation {
 		connID = p.getDestConnID2()
@@ -666,10 +662,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 
 	pl := payload{frames: make([]*ackhandler.Frame, 0, 1)}
 
-	if p.Conn == nil {
-		utils.TemporaryLog("conn is nil")
-	}
-	//already locked
 	if p.Conn.PathValidationState == PVstate_composeNextPacket {
 		p.Conn.PathValidationLock.Lock()
 		utils.TemporaryLog("now Path Validation State is PVstate_composeNextPacket")
@@ -691,9 +683,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 		utils.DebugNormolLog("framer AppendControlFrames")
 		pl.frames, lengthAdded = p.framer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded
-		if isPathChallengeFrame(pl.frames) {
-			return pl
-		}
 
 		pl.frames, lengthAdded = p.framer.AppendStreamFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded

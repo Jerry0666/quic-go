@@ -245,7 +245,8 @@ type connection struct {
 	PathValidationState  int
 	PathValidationframer framerPV
 
-	challengeData [8]byte
+	serverChallengeData [8]byte
+	clientChallengeData [8]byte
 
 	SecondRemoteAddr net.Addr
 }
@@ -615,13 +616,14 @@ func (s *connection) run() error {
 			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
 			path_ch := wire.PathChallengeFrame{Data: data}
 			//set challenge data to connection
-			s.challengeData = data
-			utils.TemporaryLog("connection data address:%p", &(s.challengeData))
-			utils.TemporaryLog("connection data:%v", s.challengeData)
-			utils.TemporaryLog("data address:%p", &data)
-			utils.DebugNormolLog("challenge frame:")
-			utils.DebugNormolLog("%v", &path_ch)
-			s.framer.QueueControlFrame(&path_ch)
+			s.clientChallengeData = data
+			utils.TemporaryLog("challenge frame:")
+			utils.TemporaryLog("%v", path_ch)
+			s.PathValidationframer.QueueControlFrame(&path_ch)
+			s.PathValidationLock.Lock()
+			s.PathValidationState = PVstate_PackPacket
+			utils.TemporaryLog("set the state PVstate_PackPacket")
+			s.PathValidationLock.Unlock()
 		}
 	}()
 runLoop:
@@ -1521,24 +1523,46 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 	if s.perspective == protocol.PerspectiveClient {
 		utils.TemporaryLog("client receive path challenge!")
+		s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+		s.PathValidationLock.Lock()
+		s.PathValidationState = PVstate_PackPacket
+		s.PathValidationLock.Unlock()
 		return
 	}
-	utils.TemporaryLog("handle Path Challenge Frame!")
-	s.PathValidationLock.Lock()
-	s.PathValidationState = PVstate_PackPacket
-	s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
-	data := [8]byte{0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02}
-	path_ch := wire.PathChallengeFrame{Data: data}
-	s.PathValidationframer.QueueControlFrame(&path_ch)
-	s.PathValidationLock.Unlock()
+	if s.perspective == protocol.PerspectiveServer {
+		utils.TemporaryLog("handle Path Challenge Frame!")
+		s.PathValidationLock.Lock()
+		s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+		data := [8]byte{0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02}
+		s.serverChallengeData = data
+		path_ch := wire.PathChallengeFrame{Data: data}
+		s.PathValidationframer.QueueControlFrame(&path_ch)
+		s.PathValidationState = PVstate_PackPacket
+		s.PathValidationLock.Unlock()
+		return
+	}
+
 }
 
 func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
+	utils.TemporaryLog("handle path response frame!")
+	if s.perspective == protocol.PerspectiveServer {
+		utils.TemporaryLog("server receive path response frame!")
+		for i, b := range frame.Data {
+			if b != s.serverChallengeData[i] {
+				utils.DebugLogErr("path challenge fail!")
+				utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.serverChallengeData[i], i)
+				return
+			}
+		}
+		utils.TemporaryLog("path challenge success!")
+		return
+	}
 	utils.TemporaryLog("data:%v", frame)
 	for i, b := range frame.Data {
-		if b != s.challengeData[i] {
+		if b != s.clientChallengeData[i] {
 			utils.DebugLogErr("path challenge fail!")
-			utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.challengeData[i], i)
+			utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.clientChallengeData[i], i)
 			return
 		}
 	}
