@@ -16,15 +16,16 @@ type sender interface {
 }
 
 type sendQueue struct {
-	queue        chan *packetBuffer
-	queue2       chan *packetBuffer
-	closeCalled  chan struct{} // runStopped when Close() is called
-	runStopped   chan struct{} // runStopped when the run loop returns
-	available    chan struct{}
-	Test         bool
-	conn         sendConn
-	conn2        sendConn
-	LocalUdpConn net.PacketConn
+	queue         chan *packetBuffer
+	queue2        chan *packetBuffer
+	closeCalled   chan struct{} // runStopped when Close() is called
+	runStopped    chan struct{} // runStopped when the run loop returns
+	available     chan struct{}
+	Test          bool
+	conn          sendConn
+	conn2         sendConn
+	LocalUdpConn  net.PacketConn
+	MigrationSign chan struct{}
 }
 
 var _ sender = &sendQueue{}
@@ -39,13 +40,14 @@ func UseSecondQueue(s sender, p *packetBuffer) {
 
 func newSendQueue(conn sendConn) sender {
 	return &sendQueue{
-		conn:        conn,
-		runStopped:  make(chan struct{}),
-		closeCalled: make(chan struct{}),
-		available:   make(chan struct{}, 1),
-		Test:        false,
-		queue:       make(chan *packetBuffer, sendQueueCapacity),
-		queue2:      make(chan *packetBuffer, sendQueueCapacity),
+		conn:          conn,
+		runStopped:    make(chan struct{}),
+		closeCalled:   make(chan struct{}),
+		available:     make(chan struct{}, 1),
+		Test:          false,
+		queue:         make(chan *packetBuffer, sendQueueCapacity),
+		queue2:        make(chan *packetBuffer, sendQueueCapacity),
+		MigrationSign: make(chan struct{}),
 	}
 }
 
@@ -115,6 +117,10 @@ func (h *sendQueue) Available() <-chan struct{} {
 	return h.available
 }
 
+func (h *sendQueue) Migration() {
+	h.conn = h.conn2
+}
+
 func (h *sendQueue) Run() error {
 	defer close(h.runStopped)
 	var shouldClose bool
@@ -123,6 +129,9 @@ func (h *sendQueue) Run() error {
 			return nil
 		}
 		select {
+		case <-h.MigrationSign:
+			utils.TemporaryLog("receive migration sign! Do the connection migration.")
+			h.Migration()
 		case <-h.closeCalled:
 			h.closeCalled = nil // prevent this case from being selected again
 			// make sure that all queued packets are actually sent out

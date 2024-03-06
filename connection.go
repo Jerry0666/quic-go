@@ -241,9 +241,10 @@ type connection struct {
 	logger utils.Logger
 
 	// Path validation
-	PathValidationLock   sync.Mutex
-	PathValidationState  int
-	PathValidationframer framerPV
+	PathValidationLock    sync.Mutex
+	PathValidationState   int
+	PathValidationframer  framerPV
+	PathValidationSuccess bool
 
 	serverChallengeData [8]byte
 	clientChallengeData [8]byte
@@ -291,6 +292,7 @@ var newConnection = func(
 		logger:                logger,
 		version:               v,
 		PathValidationState:   PVstate_non,
+		PathValidationSuccess: false,
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -426,6 +428,7 @@ var newClientConnection = func(
 		versionNegotiated:     hasNegotiatedVersion,
 		version:               v,
 		PathValidationState:   PVstate_non,
+		PathValidationSuccess: false,
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -1556,6 +1559,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 			}
 		}
 		utils.TemporaryLog("path challenge success!")
+		s.PathValidationSuccess = true
 		return
 	}
 	utils.TemporaryLog("data:%v", frame)
@@ -1567,6 +1571,13 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 		}
 	}
 	utils.TemporaryLog("path challenge success!")
+	s.PathValidationSuccess = true
+	//do connection migration...
+	sendq, ok := s.sendQueue.(*sendQueue)
+	if ok {
+		utils.TemporaryLog("convert sendQueue ok!")
+		sendq.MigrationSign <- struct{}{}
+	}
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {

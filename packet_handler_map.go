@@ -468,8 +468,6 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 					sendQ, ok := h.sendQueue.(*sendQueue)
 					if ok {
 						sendQ.conn2 = h.conn2
-						//utils.TemporaryLog("sendQueue conn2 localaddr:%v", sendQ.conn2.LocalAddr())
-						//utils.TemporaryLog("sendQueue conn2 remoteaddr:%v", sendQ.conn2.RemoteAddr())
 					}
 				}
 			}

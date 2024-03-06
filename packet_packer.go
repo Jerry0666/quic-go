@@ -673,7 +673,6 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 		pl.length += lengthAdded
 		p.Conn.PathValidationState = PVstate_sendPacket
 		utils.TemporaryLog("change the state to PVstate_sendPacket")
-		utils.TemporaryLog("pack %d frames", len(pl.frames))
 		p.Conn.PathValidationLock.Unlock()
 		return pl
 	}

@@ -55,8 +55,8 @@ func populateClientConfig(config *Config, createdPacketConn bool) *Config {
 	if createdPacketConn {
 		defaultConnIDLen = 0
 	}
-	utils.TemporaryLog("set defaultConnIDLen to 3, may need to continue tracking up!")
-	defaultConnIDLen = 3
+	utils.TemporaryLog("set defaultConnIDLen to 4, may need to continue tracking up!")
+	defaultConnIDLen = 4
 	config = populateConfig(config, defaultConnIDLen)
 	return config
 }
