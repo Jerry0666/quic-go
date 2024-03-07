@@ -1560,6 +1560,12 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 		}
 		utils.TemporaryLog("path challenge success!")
 		s.PathValidationSuccess = true
+		//do connection migration...
+		sendq, ok := s.sendQueue.(*sendQueue)
+		if ok {
+			utils.TemporaryLog("convert sendQueue ok!")
+			sendq.MigrationSign <- struct{}{}
+		}
 		return
 	}
 	utils.TemporaryLog("data:%v", frame)

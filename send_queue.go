@@ -26,6 +26,7 @@ type sendQueue struct {
 	conn2         sendConn
 	LocalUdpConn  net.PacketConn
 	MigrationSign chan struct{}
+	MigrationBool bool
 }
 
 var _ sender = &sendQueue{}
@@ -48,6 +49,7 @@ func newSendQueue(conn sendConn) sender {
 		queue:         make(chan *packetBuffer, sendQueueCapacity),
 		queue2:        make(chan *packetBuffer, sendQueueCapacity),
 		MigrationSign: make(chan struct{}),
+		MigrationBool: false,
 	}
 }
 
@@ -57,13 +59,15 @@ func (h *sendQueue) SetSecondConn(conn2 sendConn) {
 
 func newSendQueueServer(conn sendConn) sender {
 	return &sendQueue{
-		conn:        conn,
-		runStopped:  make(chan struct{}),
-		closeCalled: make(chan struct{}),
-		available:   make(chan struct{}, 1),
-		Test:        false,
-		queue:       make(chan *packetBuffer, sendQueueCapacity),
-		queue2:      make(chan *packetBuffer, sendQueueCapacity),
+		conn:          conn,
+		runStopped:    make(chan struct{}),
+		closeCalled:   make(chan struct{}),
+		available:     make(chan struct{}, 1),
+		Test:          false,
+		queue:         make(chan *packetBuffer, sendQueueCapacity),
+		queue2:        make(chan *packetBuffer, sendQueueCapacity),
+		MigrationSign: make(chan struct{}),
+		MigrationBool: false,
 	}
 }
 
