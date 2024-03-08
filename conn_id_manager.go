@@ -55,6 +55,12 @@ func newConnIDManager(
 	}
 }
 
+func (h *connIDManager) MigrationChangeConnID() {
+	//may need to retire original connection id?
+	utils.TemporaryLog("[connIDManager] change the connection ID!")
+	h.activeConnectionID = h.secondPathConnectionID
+}
+
 func (h *connIDManager) AddFromPreferredAddress(connID protocol.ConnectionID, resetToken protocol.StatelessResetToken) error {
 	return h.addConnectionID(1, connID, resetToken)
 }

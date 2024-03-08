@@ -1585,6 +1585,7 @@ func (s *connection) serverMigration() {
 		utils.TemporaryLog("convert sendQueue ok!")
 		//set connection to conn2
 		s.conn = s.conn2
+		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
 	}
 }
@@ -1618,6 +1619,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 	sendq, ok := s.sendQueue.(*sendQueue)
 	if ok {
 		utils.TemporaryLog("convert sendQueue ok!")
+		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
 	}
 }
