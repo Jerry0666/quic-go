@@ -455,14 +455,12 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 			if ok {
 				if h.RemoteAddr().String() != p.remoteAddr.String() {
 					if h.SecondRemoteAddr != nil && h.SecondRemoteAddr.String() == p.remoteAddr.String() {
+						//This should only happen before migration.
 						utils.TemporaryLog("second remote addr already been set.")
 						goto AfterSetSecondRemoteAddr
 					}
-					utils.TemporaryLog("receive packet from another ip addr!")
+					utils.TemporaryLog("receive packet from another ip addr! set the second conn!")
 					h.SecondRemoteAddr = p.remoteAddr
-					utils.TemporaryLog("set the second conn")
-					utils.TemporaryLog("use newSendPconn")
-					utils.TemporaryLog("h.UdpConn:%#v", h.UdpConn)
 					utils.TemporaryLog("h.SecondRemoteAddr:%#v", h.SecondRemoteAddr)
 					h.conn2 = newSendPconn(h.UdpConn, h.SecondRemoteAddr)
 					sendQ, ok := h.sendQueue.(*sendQueue)

@@ -250,6 +250,8 @@ type connection struct {
 	clientChallengeData [8]byte
 
 	SecondRemoteAddr net.Addr
+	//Use this chan to track receive packet is from second addr.
+	IsfromSecondAddr chan bool
 }
 
 var (
@@ -293,6 +295,7 @@ var newConnection = func(
 		version:               v,
 		PathValidationState:   PVstate_non,
 		PathValidationSuccess: false,
+		IsfromSecondAddr:      make(chan bool, 1),
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -979,6 +982,17 @@ func (s *connection) handlePacketImpl(rp *receivedPacket) bool {
 
 func (s *connection) handleShortHeaderPacket(p *receivedPacket, destConnID protocol.ConnectionID) bool {
 	utils.DebugLogEnterfunc("[connection] handleShortHeaderPacket.")
+
+	//If the packet comes from a different addr, send true to Chan; otherwise, send false.
+	if s.perspective == protocol.PerspectiveServer {
+		if p.remoteAddr.String() != s.RemoteAddr().String() {
+			utils.TemporaryLog("packet from different addr!")
+			s.IsfromSecondAddr <- true
+		} else {
+			s.IsfromSecondAddr <- false
+		}
+	}
+
 	var wasQueued bool
 
 	defer func() {
@@ -1332,6 +1346,12 @@ func (s *connection) handleFrames(
 ) (isAckEliciting bool, _ error) {
 	// Only used for tracing.
 	// If we're not tracing, this slice will always remain empty.
+
+	shouldMigration := false //server && is from second addr
+	if s.perspective == protocol.PerspectiveServer && encLevel == protocol.Encryption1RTT {
+		shouldMigration = <-s.IsfromSecondAddr
+	}
+
 	var frames []wire.Frame
 	for len(data) > 0 {
 		l, frame, err := s.frameParser.ParseNext(data, encLevel, s.version)
@@ -1342,6 +1362,15 @@ func (s *connection) handleFrames(
 		if frame == nil {
 			break
 		}
+
+		if shouldMigration {
+			if !checkChallengeFrame(frame) && !checkResponseFrame(frame) {
+				//containing non-probing frame, do the migration.
+				utils.TemporaryLog("containing non-probing frame, do the migration.")
+				s.serverMigration()
+			}
+		}
+
 		if ackhandler.IsFrameAckEliciting(frame) {
 			isAckEliciting = true
 		}
@@ -1547,6 +1576,19 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 
 }
 
+func (s *connection) serverMigration() {
+	utils.TemporaryLog("server do the connection migration!")
+	s.PathValidationSuccess = true
+	//do connection migration...
+	sendq, ok := s.sendQueue.(*sendQueue)
+	if ok {
+		utils.TemporaryLog("convert sendQueue ok!")
+		//set connection to conn2
+		s.conn = s.conn2
+		sendq.MigrationSign <- struct{}{}
+	}
+}
+
 func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 	utils.TemporaryLog("handle path response frame!")
 	if s.perspective == protocol.PerspectiveServer {
@@ -1559,13 +1601,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 			}
 		}
 		utils.TemporaryLog("path challenge success!")
-		s.PathValidationSuccess = true
-		//do connection migration...
-		sendq, ok := s.sendQueue.(*sendQueue)
-		if ok {
-			utils.TemporaryLog("convert sendQueue ok!")
-			sendq.MigrationSign <- struct{}{}
-		}
+
 		return
 	}
 	utils.TemporaryLog("data:%v", frame)
