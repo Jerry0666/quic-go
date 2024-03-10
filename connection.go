@@ -245,12 +245,14 @@ type connection struct {
 	PathValidationState   int
 	PathValidationframer  framerPV
 	PathValidationSuccess bool
+	//Indicate it has been migrated
+	Migration bool
 
 	serverChallengeData [8]byte
 	clientChallengeData [8]byte
 
 	SecondRemoteAddr net.Addr
-	//Use this chan to track receive packet is from second addr.
+	//Use this chan to track receive packet is from second addr. Only used by server.
 	IsfromSecondAddr chan bool
 }
 
@@ -259,8 +261,6 @@ var (
 	_ EarlyConnection = &connection{}
 	_ streamSender    = &connection{}
 )
-
-var testSecondConn bool
 
 var newConnection = func(
 	conn sendConn,
@@ -296,6 +296,7 @@ var newConnection = func(
 		PathValidationState:   PVstate_non,
 		PathValidationSuccess: false,
 		IsfromSecondAddr:      make(chan bool, 1),
+		Migration:             false,
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -432,6 +433,7 @@ var newClientConnection = func(
 		version:               v,
 		PathValidationState:   PVstate_non,
 		PathValidationSuccess: false,
+		Migration:             false,
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -580,7 +582,6 @@ func (s *connection) preSetup() {
 // run the connection main loop
 func (s *connection) run() error {
 	utils.DebugLogEnterfunc("[connection] run.")
-	testSecondConn = false
 	defer s.ctxCancel()
 
 	s.timer = *newTimer()
@@ -1578,7 +1579,6 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 
 func (s *connection) serverMigration() {
 	utils.TemporaryLog("server do the connection migration!")
-	s.PathValidationSuccess = true
 	//do connection migration...
 	sendq, ok := s.sendQueue.(*sendQueue)
 	if ok {
@@ -1587,6 +1587,22 @@ func (s *connection) serverMigration() {
 		s.conn = s.conn2
 		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
+		s.Migration = true
+	}
+}
+
+func (s *connection) clientMigration() {
+	utils.TemporaryLog("client do the connection migration!")
+	//do connection migration...
+	sendq, ok := s.sendQueue.(*sendQueue)
+	if ok {
+		utils.TemporaryLog("convert sendQueue ok!")
+		if s.conn2 == nil {
+			utils.TemporaryLog("clinet conn2 is nil!")
+		}
+		s.connIDManager.MigrationChangeConnID()
+		sendq.MigrationSign <- struct{}{}
+		s.Migration = true
 	}
 }
 
@@ -1602,25 +1618,21 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 			}
 		}
 		utils.TemporaryLog("path challenge success!")
-
+		s.PathValidationSuccess = true
 		return
 	}
-	utils.TemporaryLog("data:%v", frame)
-	for i, b := range frame.Data {
-		if b != s.clientChallengeData[i] {
-			utils.DebugLogErr("path challenge fail!")
-			utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.clientChallengeData[i], i)
-			return
+	if s.perspective == protocol.PerspectiveClient {
+		for i, b := range frame.Data {
+			if b != s.clientChallengeData[i] {
+				utils.DebugLogErr("path challenge fail!")
+				utils.DebugLogErr("b:%d, challenge data:%d, i:%d", b, s.clientChallengeData[i], i)
+				return
+			}
 		}
-	}
-	utils.TemporaryLog("path challenge success!")
-	s.PathValidationSuccess = true
-	//do connection migration...
-	sendq, ok := s.sendQueue.(*sendQueue)
-	if ok {
-		utils.TemporaryLog("convert sendQueue ok!")
-		s.connIDManager.MigrationChangeConnID()
-		sendq.MigrationSign <- struct{}{}
+		utils.TemporaryLog("path challenge success!")
+		s.PathValidationSuccess = true
+		s.clientMigration()
+		return
 	}
 }
 
@@ -2151,6 +2163,7 @@ func (s *connection) sendPackedShortHeaderPacket(buffer *packetBuffer, p *ackhan
 	if s.firstAckElicitingPacketAfterIdleSentTime.IsZero() && ackhandler.HasAckElicitingFrames(p.Frames) {
 		s.firstAckElicitingPacketAfterIdleSentTime = now
 	}
+	utils.DebugLogEnterfunc("[connection] sendPackedShortHeaderPacket.")
 
 	s.sentPacketHandler.SentPacket(p)
 	s.connIDManager.SentPacket()

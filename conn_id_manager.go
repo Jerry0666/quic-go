@@ -16,8 +16,6 @@ type newConnID struct {
 	StatelessResetToken protocol.StatelessResetToken
 }
 
-//test
-
 type connIDManager struct {
 	queue list.List[newConnID]
 

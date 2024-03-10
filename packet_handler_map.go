@@ -68,6 +68,9 @@ type packetHandlerMap struct {
 
 	tracer logging.Tracer
 	logger utils.Logger
+
+	MigrationBool        bool
+	MigrationCloseListen chan struct{}
 }
 
 var _ packetHandlerManager = &packetHandlerMap{}
@@ -138,6 +141,8 @@ func newPacketHandlerMap(
 		statelessResetEnabled:   statelessResetKey != nil,
 		tracer:                  tracer,
 		logger:                  logger,
+		MigrationBool:           false,
+		MigrationCloseListen:    make(chan struct{}),
 	}
 	if m.statelessResetEnabled {
 		m.statelessResetHasher = hmac.New(sha256.New, statelessResetKey[:])
@@ -196,6 +201,7 @@ func (h *packetHandlerMap) logUsage() {
 }
 
 func (h *packetHandlerMap) Add(id protocol.ConnectionID, handler packetHandler) bool /* was added */ {
+	utils.DebugLogEnterfunc("[packetHandlerMap] Add. connid:%s ", id.String())
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
@@ -363,6 +369,10 @@ func (h *packetHandlerMap) close(e error) error {
 
 	var wg sync.WaitGroup
 	for _, handler := range h.handlers {
+		c, ok := handler.(*connection)
+		if ok {
+			utils.TemporaryLog("destroy the connection... %s", c.connIDManager.Get().String())
+		}
 		wg.Add(1)
 		go func(handler packetHandler) {
 			handler.destroy(e)
@@ -381,7 +391,7 @@ func (h *packetHandlerMap) close(e error) error {
 
 func (h *packetHandlerMap) listen() {
 
-	defer close(h.listening)
+	defer h.closeListen()
 	for {
 		p, err := h.conn.ReadPacket()
 		//nolint:staticcheck // SA1019 ignore this!
@@ -393,17 +403,30 @@ func (h *packetHandlerMap) listen() {
 			continue
 		}
 		if err != nil {
-			h.close(err)
+			utils.TemporaryLog("read conn error!!")
+			if h.MigrationBool {
+				utils.TemporaryLog("migration close the conn, don't do h.close")
+			} else {
+				h.close(err)
+			}
+			//h.close(err)
 			return
 		}
-		utils.DebugNormolLog("receive udp packet...")
+		utils.DebugNormolLog("receive from conn1!")
 		h.handlePacket(p)
 	}
 }
 
+func (h *packetHandlerMap) closeListen() {
+	utils.TemporaryLog("defer listen()")
+	if !h.MigrationBool {
+		close(h.listening)
+	}
+	h.MigrationCloseListen <- struct{}{}
+}
+
 func (h *packetHandlerMap) listen2() {
 	utils.TemporaryLog("[packetHandlerMap] listen2!!!")
-	defer close(h.listening)
 	for {
 		p, err := h.conn2.ReadPacket()
 		//nolint:staticcheck // SA1019 ignore this!
@@ -415,12 +438,26 @@ func (h *packetHandlerMap) listen2() {
 			continue
 		}
 		if err != nil {
-			h.close(err)
+			//h.close(err)
 			return
 		}
 		utils.TemporaryLog("receive from conn2!")
 		h.handlePacket(p)
+		if h.MigrationBool {
+			utils.TemporaryLog("migration already been done, break the listen2!")
+			break
+		}
 	}
+}
+
+func (h *packetHandlerMap) migration() {
+	h.conn.Close()
+	//wait conn1 listen close
+	<-h.MigrationCloseListen
+	utils.TemporaryLog("[packetHandlerMap] do the migration!")
+	h.conn = h.conn2
+	//restart the listen
+	go h.listen()
 }
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
@@ -451,21 +488,26 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 				return
 			}
 		} else { // existing connection
-			h, ok := handler.(*connection)
+			c, ok := handler.(*connection)
 			if ok {
-				if h.RemoteAddr().String() != p.remoteAddr.String() {
-					if h.SecondRemoteAddr != nil && h.SecondRemoteAddr.String() == p.remoteAddr.String() {
+				if c.perspective == protocol.PerspectiveClient && c.Migration && !h.MigrationBool {
+					utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
+					h.MigrationBool = true
+					h.migration()
+				}
+				if c.RemoteAddr().String() != p.remoteAddr.String() {
+					if c.SecondRemoteAddr != nil && c.SecondRemoteAddr.String() == p.remoteAddr.String() {
 						//This should only happen before migration.
 						utils.TemporaryLog("second remote addr already been set.")
 						goto AfterSetSecondRemoteAddr
 					}
 					utils.TemporaryLog("receive packet from another ip addr! set the second conn!")
-					h.SecondRemoteAddr = p.remoteAddr
-					utils.TemporaryLog("h.SecondRemoteAddr:%#v", h.SecondRemoteAddr)
-					h.conn2 = newSendPconn(h.UdpConn, h.SecondRemoteAddr)
-					sendQ, ok := h.sendQueue.(*sendQueue)
+					c.SecondRemoteAddr = p.remoteAddr
+					utils.TemporaryLog("h.SecondRemoteAddr:%#v", c.SecondRemoteAddr)
+					c.conn2 = newSendPconn(c.UdpConn, c.SecondRemoteAddr)
+					sendQ, ok := c.sendQueue.(*sendQueue)
 					if ok {
-						sendQ.conn2 = h.conn2
+						sendQ.conn2 = c.conn2
 					}
 				}
 			}
@@ -475,7 +517,6 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 		}
 	}
 	if !wire.IsLongHeaderPacket(p.data[0]) {
-		fmt.Println("It is not LongHeaderPacket.")
 		go h.maybeSendStatelessReset(p, connID)
 		return
 	}
