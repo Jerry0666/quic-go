@@ -69,8 +69,9 @@ type packetHandlerMap struct {
 	tracer logging.Tracer
 	logger utils.Logger
 
-	MigrationBool        bool
-	MigrationCloseListen chan struct{}
+	MigrationBool         bool
+	MigrationCloseListen  chan struct{}
+	MigrationBreakListen2 chan struct{}
 }
 
 var _ packetHandlerManager = &packetHandlerMap{}
@@ -143,6 +144,7 @@ func newPacketHandlerMap(
 		logger:                  logger,
 		MigrationBool:           false,
 		MigrationCloseListen:    make(chan struct{}),
+		MigrationBreakListen2:   make(chan struct{}),
 	}
 	if m.statelessResetEnabled {
 		m.statelessResetHasher = hmac.New(sha256.New, statelessResetKey[:])
@@ -445,19 +447,33 @@ func (h *packetHandlerMap) listen2() {
 		h.handlePacket(p)
 		if h.MigrationBool {
 			utils.TemporaryLog("migration already been done, break the listen2!")
+			h.MigrationBreakListen2 <- struct{}{}
 			break
 		}
 	}
 }
 
 func (h *packetHandlerMap) migration() {
+	//check the mutex first
+	h.mutex.Lock()
 	h.conn.Close()
+	h.mutex.Unlock()
 	//wait conn1 listen close
 	<-h.MigrationCloseListen
 	utils.TemporaryLog("[packetHandlerMap] do the migration!")
 	h.conn = h.conn2
+
+	utils.TemporaryLog("migration unlock the mutex!")
 	//restart the listen
+
+	//wait listen2 break
+	<-h.MigrationBreakListen2
 	go h.listen()
+}
+
+func (h *packetHandlerMap) handlePacketDefer() {
+	h.mutex.Unlock()
+	utils.TemporaryLog("h.mutex.Unlock()")
 }
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
@@ -475,7 +491,8 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	}
 
 	h.mutex.Lock()
-	defer h.mutex.Unlock()
+	utils.TemporaryLog("h.mutex.Lock()")
+	defer h.handlePacketDefer()
 
 	if isStatelessReset := h.maybeHandleStatelessReset(p.data); isStatelessReset {
 		return
@@ -493,7 +510,7 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 				if c.perspective == protocol.PerspectiveClient && c.Migration && !h.MigrationBool {
 					utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
 					h.MigrationBool = true
-					h.migration()
+					go h.migration()
 				}
 				if c.RemoteAddr().String() != p.remoteAddr.String() {
 					if c.SecondRemoteAddr != nil && c.SecondRemoteAddr.String() == p.remoteAddr.String() {

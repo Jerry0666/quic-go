@@ -657,6 +657,7 @@ runLoop:
 				// Don't set timers and send packets if the packet made us close the connection.
 				select {
 				case closeErr = <-s.closeChan:
+					utils.DebugLogErr("connection receive slose signal")
 					break runLoop
 				default:
 				}
@@ -664,18 +665,24 @@ runLoop:
 		}
 		// If we processed any undecryptable packets, jump to the resetting of the timers directly.
 		if !processedUndecryptablePacket {
+			utils.TemporaryLog("!processedUndecryptablePacket")
 			select {
 			case closeErr = <-s.closeChan:
+				utils.TemporaryLog("case <-s.closeChan")
 				break runLoop
 			case <-s.timer.Chan():
+				utils.TemporaryLog("case <-s.timer.Chan()")
 				s.timer.SetRead()
 				// We do all the interesting stuff after the switch statement, so
 				// nothing to see here.
 			case <-s.sendingScheduled:
+				utils.TemporaryLog("case <-s.sendingScheduled")
 				// We do all the interesting stuff after the switch statement, so
 				// nothing to see here.
 			case <-sendQueueAvailable:
+				utils.TemporaryLog("case <-sendQueueAvailable")
 			case firstPacket := <-s.receivedPackets:
+				utils.TemporaryLog("case <-s.receivedPackets")
 				wasProcessed := s.handlePacketImpl(firstPacket)
 				// Don't set timers and send packets if the packet made us close the connection.
 				select {
@@ -712,6 +719,7 @@ runLoop:
 					continue
 				}
 			case <-s.handshakeCompleteChan:
+				utils.TemporaryLog("<-s.handshakeCompleteChan")
 				s.handleHandshakeComplete()
 			}
 		}
@@ -720,6 +728,9 @@ runLoop:
 		if timeout := s.sentPacketHandler.GetLossDetectionTimeout(); !timeout.IsZero() && timeout.Before(now) {
 			// This could cause packets to be retransmitted.
 			// Check it before trying to send packets.
+			utils.DebugLogErr("timeout: %v", timeout)
+			utils.DebugLogErr("    now: %v", now)
+			utils.DebugLogErr("time out")
 			if err := s.sentPacketHandler.OnLossDetectionTimeout(); err != nil {
 				s.closeLocal(err)
 			}
@@ -735,8 +746,11 @@ runLoop:
 			continue
 		} else {
 			idleTimeoutStartTime := s.idleTimeoutStartTime()
+			utils.TemporaryLog("idleTimeoutStartTime: %v", idleTimeoutStartTime)
+			utils.TemporaryLog("                 now: %v", now)
 			if (!s.handshakeComplete && now.Sub(idleTimeoutStartTime) >= s.config.HandshakeIdleTimeout) ||
 				(s.handshakeComplete && now.Sub(idleTimeoutStartTime) >= s.idleTimeout) {
+				utils.TemporaryLog("s.destroyImpl timeout err")
 				s.destroyImpl(qerr.ErrIdleTimeout)
 				continue
 			}
@@ -1714,6 +1728,8 @@ func (s *connection) destroy(e error) {
 }
 
 func (s *connection) destroyImpl(e error) {
+	utils.DebugLogErr("[connection] destroyImpl.")
+	utils.DebugLogErr("err:%v", e)
 	s.closeOnce.Do(func() {
 		if nerr, ok := e.(net.Error); ok && nerr.Timeout() {
 			s.logger.Errorf("Destroying connection: %s", e)
