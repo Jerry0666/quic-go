@@ -665,24 +665,18 @@ runLoop:
 		}
 		// If we processed any undecryptable packets, jump to the resetting of the timers directly.
 		if !processedUndecryptablePacket {
-			utils.TemporaryLog("!processedUndecryptablePacket")
 			select {
 			case closeErr = <-s.closeChan:
-				utils.TemporaryLog("case <-s.closeChan")
 				break runLoop
 			case <-s.timer.Chan():
-				utils.TemporaryLog("case <-s.timer.Chan()")
 				s.timer.SetRead()
 				// We do all the interesting stuff after the switch statement, so
 				// nothing to see here.
 			case <-s.sendingScheduled:
-				utils.TemporaryLog("case <-s.sendingScheduled")
 				// We do all the interesting stuff after the switch statement, so
 				// nothing to see here.
 			case <-sendQueueAvailable:
-				utils.TemporaryLog("case <-sendQueueAvailable")
 			case firstPacket := <-s.receivedPackets:
-				utils.TemporaryLog("case <-s.receivedPackets")
 				wasProcessed := s.handlePacketImpl(firstPacket)
 				// Don't set timers and send packets if the packet made us close the connection.
 				select {
@@ -719,7 +713,6 @@ runLoop:
 					continue
 				}
 			case <-s.handshakeCompleteChan:
-				utils.TemporaryLog("<-s.handshakeCompleteChan")
 				s.handleHandshakeComplete()
 			}
 		}
