@@ -414,6 +414,7 @@ func (h *packetHandlerMap) listen() {
 			//h.close(err)
 			return
 		}
+		utils.DebugNormolLog("--------------------------------------------------------------------------------")
 		utils.DebugNormolLog("receive from conn1!")
 		h.handlePacket(p)
 	}
@@ -473,7 +474,6 @@ func (h *packetHandlerMap) migration() {
 
 func (h *packetHandlerMap) handlePacketDefer() {
 	h.mutex.Unlock()
-	utils.TemporaryLog("h.mutex.Unlock()")
 }
 
 func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
@@ -491,7 +491,6 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 	}
 
 	h.mutex.Lock()
-	utils.TemporaryLog("h.mutex.Lock()")
 	defer h.handlePacketDefer()
 
 	if isStatelessReset := h.maybeHandleStatelessReset(p.data); isStatelessReset {

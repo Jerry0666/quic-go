@@ -885,11 +885,11 @@ runLoop:
 			continue
 		} else {
 			idleTimeoutStartTime := s.idleTimeoutStartTime()
-			utils.TemporaryLog("idleTimeoutStartTime: %v", idleTimeoutStartTime)
-			utils.TemporaryLog("                 now: %v", now)
+			// utils.TemporaryLog("idleTimeoutStartTime: %v", idleTimeoutStartTime)
+			// utils.TemporaryLog("                 now: %v", now)
 			if (!s.handshakeComplete && now.Sub(idleTimeoutStartTime) >= s.config.HandshakeIdleTimeout) ||
 				(s.handshakeComplete && now.Sub(idleTimeoutStartTime) >= s.idleTimeout) {
-				utils.TemporaryLog("s.destroyImpl timeout err")
+				utils.DebugLogErr("s.destroyImpl timeout err")
 				s.destroyImpl(qerr.ErrIdleTimeout)
 				continue
 			}
@@ -1122,7 +1122,8 @@ func (s *connection) handlePacketImpl(rp *receivedPacket) bool {
 			if counter > 0 {
 				p.buffer.Split()
 			}
-			utils.DebugNormolLog("enter handleShortHeaderPacket")
+			//utils.DebugNormolLog("enter handleShortHeaderPacket")
+
 			//show destConnID here, may be err.
 			destConnID, _ = wire.ParseConnectionID(p.data, s.srcConnIDLen)
 			processed = s.handleShortHeaderPacket(p, destConnID)

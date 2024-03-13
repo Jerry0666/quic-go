@@ -521,7 +521,6 @@ func (h *sentPacketHandler) hasOutstandingPackets() bool {
 }
 
 func (h *sentPacketHandler) setLossDetectionTimer() {
-	utils.DebugLogEnterfunc("[sentPacketHandler] setLossDetectionTimer.")
 	oldAlarm := h.alarm // only needed in case tracing is enabled
 	lossTime, encLevel := h.getLossTimeAndSpace()
 	if !lossTime.IsZero() {
