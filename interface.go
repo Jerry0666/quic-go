@@ -185,6 +185,11 @@ type Connection interface {
 	ReceiveMessage() ([]byte, error)
 }
 
+type MPConnection interface {
+	Connection
+	Hello()
+}
+
 // An EarlyConnection is a connection that is handshaking.
 // Data sent during the handshake is encrypted using the forward secure keys.
 // When using client certificates, the client's identity is only verified
@@ -332,6 +337,8 @@ type Config struct {
 	// Enable QUIC datagram support (RFC 9221).
 	EnableDatagrams bool
 	Tracer          logging.Tracer
+	// Enable MP-QUIC
+	EnableMPQuic bool
 }
 
 // ConnectionState records basic details about a QUIC connection

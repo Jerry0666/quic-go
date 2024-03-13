@@ -506,12 +506,20 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 			}
 		} else { // existing connection
 			c, ok := handler.(*connection)
-			if ok {
-				if c.perspective == protocol.PerspectiveClient && c.Migration && !h.MigrationBool {
-					utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
-					h.MigrationBool = true
-					go h.migration()
+			if !ok {
+				//utils.DebugLogErr("convert to connection error!!!")
+				mp, ok := handler.(*MPconnection)
+				if ok {
+					if mp.perspective == protocol.PerspectiveClient && mp.Migration && !h.MigrationBool {
+						utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
+						h.MigrationBool = true
+						go h.migration()
+					}
+				} else {
+					utils.DebugLogErr("convert connection or MPconnection error!")
 				}
+			}
+			if ok { //server
 				if c.RemoteAddr().String() != p.remoteAddr.String() {
 					if c.SecondRemoteAddr != nil && c.SecondRemoteAddr.String() == p.remoteAddr.String() {
 						//This should only happen before migration.

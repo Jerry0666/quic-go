@@ -142,6 +142,14 @@ func (e *errCloseForRecreating) Error() string {
 var connTracingID uint64        // to be accessed atomically
 func nextConnTracingID() uint64 { return atomic.AddUint64(&connTracingID, 1) }
 
+type MPconnection struct {
+	connection
+}
+
+func (m *MPconnection) Hello() {
+	fmt.Println("MPconnection hello !!!")
+}
+
 // A Connection is a QUIC connection
 type connection struct {
 	// Destination connection ID used during the handshake.
@@ -401,6 +409,142 @@ var newConnection = func(
 	return s
 }
 
+var newMPClientConnection = func(
+	conn sendConn,
+	runner connRunner,
+	destConnID protocol.ConnectionID,
+	srcConnID protocol.ConnectionID,
+	conf *Config,
+	tlsConf *tls.Config,
+	initialPacketNumber protocol.PacketNumber,
+	enable0RTT bool,
+	hasNegotiatedVersion bool,
+	tracer logging.ConnectionTracer,
+	tracingID uint64,
+	logger utils.Logger,
+	v protocol.VersionNumber,
+) quicConn {
+	utils.DebugLogEnterfunc("newMPClientConnection.")
+
+	s := &MPconnection{
+		connection{
+			conn:                  conn,
+			config:                conf,
+			origDestConnID:        destConnID,
+			handshakeDestConnID:   destConnID,
+			srcConnIDLen:          srcConnID.Len(),
+			perspective:           protocol.PerspectiveClient,
+			handshakeCompleteChan: make(chan struct{}),
+			logID:                 destConnID.String(),
+			logger:                logger,
+			tracer:                tracer,
+			versionNegotiated:     hasNegotiatedVersion,
+			version:               v,
+			PathValidationState:   PVstate_non,
+			PathValidationSuccess: false,
+			Migration:             false,
+		},
+	}
+
+	s.connIDManager = newConnIDManager(
+		destConnID,
+		func(token protocol.StatelessResetToken) { runner.AddResetToken(token, s) },
+		runner.RemoveResetToken,
+		s.queueControlFrame,
+	)
+	s.connIDGenerator = newConnIDGenerator(
+		srcConnID,
+		nil,
+		func(connID protocol.ConnectionID) { runner.Add(connID, s) },
+		runner.GetStatelessResetToken,
+		runner.Remove,
+		runner.Retire,
+		runner.ReplaceWithClosed,
+		s.queueControlFrame,
+		s.config.ConnectionIDGenerator,
+	)
+	s.preSetup()
+	s.ctx, s.ctxCancel = context.WithCancel(context.WithValue(context.Background(), ConnectionTracingKey, tracingID))
+	s.sentPacketHandler, s.receivedPacketHandler = ackhandler.NewAckHandler(
+		initialPacketNumber,
+		getMaxPacketSize(s.conn.RemoteAddr()),
+		s.rttStats,
+		false, /* has no effect */
+		s.perspective,
+		s.tracer,
+		s.logger,
+	)
+	initialStream := newCryptoStream()
+	handshakeStream := newCryptoStream()
+	params := &wire.TransportParameters{
+		InitialMaxStreamDataBidiRemote: protocol.ByteCount(s.config.InitialStreamReceiveWindow),
+		InitialMaxStreamDataBidiLocal:  protocol.ByteCount(s.config.InitialStreamReceiveWindow),
+		InitialMaxStreamDataUni:        protocol.ByteCount(s.config.InitialStreamReceiveWindow),
+		InitialMaxData:                 protocol.ByteCount(s.config.InitialConnectionReceiveWindow),
+		MaxIdleTimeout:                 s.config.MaxIdleTimeout,
+		MaxBidiStreamNum:               protocol.StreamNum(s.config.MaxIncomingStreams),
+		MaxUniStreamNum:                protocol.StreamNum(s.config.MaxIncomingUniStreams),
+		MaxAckDelay:                    protocol.MaxAckDelayInclGranularity,
+		AckDelayExponent:               protocol.AckDelayExponent,
+		DisableActiveMigration:         true,
+		ActiveConnectionIDLimit:        protocol.MaxActiveConnectionIDs,
+		InitialSourceConnectionID:      srcConnID,
+	}
+	if s.config.EnableDatagrams {
+		params.MaxDatagramFrameSize = protocol.MaxDatagramFrameSize
+	} else {
+		params.MaxDatagramFrameSize = protocol.InvalidByteCount
+	}
+	if s.tracer != nil {
+		s.tracer.SentTransportParameters(params)
+	}
+	cs, clientHelloWritten := handshake.NewCryptoSetupClient(
+		initialStream,
+		handshakeStream,
+		destConnID,
+		conn.LocalAddr(),
+		conn.RemoteAddr(),
+		params,
+		&handshakeRunner{
+			onReceivedParams:    s.handleTransportParameters,
+			onError:             s.closeLocal,
+			dropKeys:            s.dropEncryptionLevel,
+			onHandshakeComplete: func() { close(s.handshakeCompleteChan) },
+		},
+		tlsConf,
+		enable0RTT,
+		s.rttStats,
+		tracer,
+		logger,
+		s.version,
+	)
+	s.clientHelloWritten = clientHelloWritten
+	s.cryptoStreamHandler = cs
+	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, newCryptoStream())
+	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
+	packer := newPacketPacker(srcConnID, s.connIDManager.Get, initialStream, handshakeStream, s.sentPacketHandler, s.retransmissionQueue, s.RemoteAddr(), cs, s.framer, s.receivedPacketHandler, s.datagramQueue, s.perspective)
+	//need to modify
+	packer.Conn = &s.connection
+	s.packer = packer
+	//set the second conn id
+	p, ok := s.packer.(*packetPacker)
+	if ok {
+		p.SetSecondConn(s.connIDManager.GetSecondConn)
+	}
+	if len(tlsConf.ServerName) > 0 {
+		s.tokenStoreKey = tlsConf.ServerName
+	} else {
+		s.tokenStoreKey = conn.RemoteAddr().String()
+	}
+	if s.config.TokenStore != nil {
+		if token := s.config.TokenStore.Pop(s.tokenStoreKey); token != nil {
+			s.packer.SetToken(token.data)
+		}
+	}
+	return s
+
+}
+
 // declare this as a variable, such that we can it mock it in the tests
 var newClientConnection = func(
 	conn sendConn,
@@ -418,6 +562,7 @@ var newClientConnection = func(
 	v protocol.VersionNumber,
 ) quicConn {
 	utils.DebugLogEnterfunc("newClientConnection.")
+
 	s := &connection{
 		conn:                  conn,
 		config:                conf,
@@ -435,6 +580,7 @@ var newClientConnection = func(
 		PathValidationSuccess: false,
 		Migration:             false,
 	}
+
 	s.connIDManager = newConnIDManager(
 		destConnID,
 		func(token protocol.StatelessResetToken) { runner.AddResetToken(token, s) },

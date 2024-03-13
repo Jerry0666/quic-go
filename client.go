@@ -39,9 +39,10 @@ type client struct {
 
 	conn quicConn
 
-	tracer    logging.ConnectionTracer
-	tracingID uint64
-	logger    utils.Logger
+	tracer       logging.ConnectionTracer
+	tracingID    uint64
+	logger       utils.Logger
+	enableMPQuic bool
 }
 
 // make it possible to mock connection ID for initial generation in the tests
@@ -113,7 +114,7 @@ func dialAddrContext(
 	if err != nil {
 		return nil, err
 	}
-	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(11, 0, 0, 1), Port: 0})
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	utils.DebugNormolLog("create the udp connection, local addr:%s", udpConn.LocalAddr().String())
 	if err != nil {
 		return nil, err
@@ -190,6 +191,8 @@ func dialContext(
 	use0RTT bool,
 	createdPacketConn bool,
 ) (quicConn, error) {
+	utils.TemporaryLog("enable MPQuic:%v", config.EnableMPQuic)
+	enableMPQuic := config.EnableMPQuic
 	if tlsConf == nil {
 		return nil, errors.New("quic: tls.Config not set")
 	}
@@ -208,6 +211,7 @@ func dialContext(
 		return nil, err
 	}
 	c, err := newClient(pconn, remoteAddr, config, tlsConf, host, use0RTT, createdPacketConn)
+	c.enableMPQuic = enableMPQuic
 	//need to add second conn to client
 	c.setSecondConn(conn2)
 	if err != nil {
@@ -297,25 +301,44 @@ func (c *client) setSecondConn(pconn2 net.PacketConn) {
 func (c *client) dial(ctx context.Context) error {
 	c.logger.Infof("Starting new connection to %s (%s -> %s), source connection ID %s, destination connection ID %s, version %s", c.tlsConf.ServerName, c.sconn.LocalAddr(), c.sconn.RemoteAddr(), c.srcConnID, c.destConnID, c.version)
 	utils.DebugNormolLog("client set the connection")
-	c.conn = newClientConnection(
-		c.sconn,
-		c.packetHandlers,
-		c.destConnID,
-		c.srcConnID,
-		c.config,
-		c.tlsConf,
-		c.initialPacketNumber,
-		c.use0RTT,
-		c.hasNegotiatedVersion,
-		c.tracer,
-		c.tracingID,
-		c.logger,
-		c.version,
-	)
+	if c.enableMPQuic {
+		c.conn = newMPClientConnection(
+			c.sconn,
+			c.packetHandlers,
+			c.destConnID,
+			c.srcConnID,
+			c.config,
+			c.tlsConf,
+			c.initialPacketNumber,
+			c.use0RTT,
+			c.hasNegotiatedVersion,
+			c.tracer,
+			c.tracingID,
+			c.logger,
+			c.version,
+		)
+	} else {
+		c.conn = newClientConnection(
+			c.sconn,
+			c.packetHandlers,
+			c.destConnID,
+			c.srcConnID,
+			c.config,
+			c.tlsConf,
+			c.initialPacketNumber,
+			c.use0RTT,
+			c.hasNegotiatedVersion,
+			c.tracer,
+			c.tracingID,
+			c.logger,
+			c.version,
+		)
+	}
+
 	c.packetHandlers.Add(c.srcConnID, c.conn)
 	if c.conn2 != nil {
 		utils.TemporaryLog("conn2 is already set, set the sendQueue!")
-		clientConn, ok := c.conn.(*connection)
+		clientConn, ok := c.conn.(*MPconnection)
 		if !ok {
 			utils.DebugLogErr("client conn convert error")
 			goto afterSetSecondConn
