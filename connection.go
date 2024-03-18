@@ -147,6 +147,10 @@ type MPconnection struct {
 	//Use this point to the packHandlerMap, so that we can set the second conn during the runtime.
 	//packetHandlerMap is responsible for listening to the conn
 	PacketHandler *packetHandlerMap
+
+	//Use this to indicate whether the second connection has already been set;
+	//it should be true after SetSecondConn and before Migration.
+	AlreadySetSecondConn bool
 }
 
 func (m *MPconnection) Hello() {
@@ -168,10 +172,35 @@ func (m *MPconnection) SetSecondConn(conn net.PacketConn) error {
 
 	m.PacketHandler.setSecondConn(conn, nil)
 	m.connIDManager.SetSecondConnID()
+	m.AlreadySetSecondConn = true
 	return nil
 }
 
 func (m *MPconnection) InitiatePathValidation() error {
+	if !m.AlreadySetSecondConn {
+		utils.DebugLogErr("second conn has not been set!")
+		err := errors.New("second conn has not been set!")
+		return err
+	}
+	if !m.handshakeComplete {
+		utils.DebugLogErr("handshake has not been completed!")
+	} else {
+		utils.TemporaryLog("handshake complete, client initial path validation!")
+	}
+	if m.perspective == protocol.PerspectiveClient {
+		//Need to be changed to randomly generated
+		data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
+		path_ch := wire.PathChallengeFrame{Data: data}
+		//set challenge data to connection
+		m.clientChallengeData = data
+		utils.TemporaryLog("challenge frame:")
+		utils.TemporaryLog("%v", path_ch)
+		m.PathValidationframer.QueueControlFrame(&path_ch)
+		m.PathValidationLock.Lock()
+		m.PathValidationState = PVstate_PackPacket
+		utils.TemporaryLog("set the state PVstate_PackPacket")
+		m.PathValidationLock.Unlock()
+	}
 
 	return nil
 }
@@ -793,22 +822,22 @@ func (s *connection) run() error {
 		sendQueueAvailable <-chan struct{}
 	)
 
-	go func() {
-		if s.perspective == protocol.PerspectiveClient {
-			time.Sleep(3 * time.Second)
-			data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
-			path_ch := wire.PathChallengeFrame{Data: data}
-			//set challenge data to connection
-			s.clientChallengeData = data
-			utils.TemporaryLog("challenge frame:")
-			utils.TemporaryLog("%v", path_ch)
-			s.PathValidationframer.QueueControlFrame(&path_ch)
-			s.PathValidationLock.Lock()
-			s.PathValidationState = PVstate_PackPacket
-			utils.TemporaryLog("set the state PVstate_PackPacket")
-			s.PathValidationLock.Unlock()
-		}
-	}()
+	// go func() {
+	// 	if s.perspective == protocol.PerspectiveClient {
+	// 		time.Sleep(3 * time.Second)
+	// 		data := [8]byte{0x01, 0x03, 0x05, 0x07, 0xa1, 0xa2, 0xa3, 0xa4}
+	// 		path_ch := wire.PathChallengeFrame{Data: data}
+	// 		//set challenge data to connection
+	// 		s.clientChallengeData = data
+	// 		utils.TemporaryLog("challenge frame:")
+	// 		utils.TemporaryLog("%v", path_ch)
+	// 		s.PathValidationframer.QueueControlFrame(&path_ch)
+	// 		s.PathValidationLock.Lock()
+	// 		s.PathValidationState = PVstate_PackPacket
+	// 		utils.TemporaryLog("set the state PVstate_PackPacket")
+	// 		s.PathValidationLock.Unlock()
+	// 	}
+	// }()
 runLoop:
 	for {
 		// Close immediately if requested
