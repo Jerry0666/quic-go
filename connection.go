@@ -144,10 +144,30 @@ func nextConnTracingID() uint64 { return atomic.AddUint64(&connTracingID, 1) }
 
 type MPconnection struct {
 	connection
+	//Use this point to the packHandlerMap, so that we can set the second conn during the runtime.
+	//packetHandlerMap is responsible for listening to the conn
+	PacketHandler *packetHandlerMap
 }
 
 func (m *MPconnection) Hello() {
 	fmt.Println("MPconnection hello !!!")
+}
+
+func (m *MPconnection) SetSecondConn(conn net.PacketConn) error {
+	utils.TemporaryLog("[MPconnection] Set SecondConn")
+	sendQ, ok := m.sendQueue.(*sendQueue)
+	if !ok {
+		utils.DebugLogErr("MPconnection obtain sendQueue convert error!")
+		err := errors.New("MPconnection obtain sendQueue convert error!")
+		return err
+	} else {
+		utils.DebugNormolLog("remote addr:%v", m.conn.RemoteAddr())
+		sendPConn2 := newSendPconn(conn, m.conn.RemoteAddr())
+		sendQ.SetSecondConn(sendPConn2)
+	}
+
+	m.PacketHandler.setSecondConn(conn, nil)
+	return nil
 }
 
 // A Connection is a QUIC connection
@@ -427,7 +447,7 @@ var newMPClientConnection = func(
 	utils.DebugLogEnterfunc("newMPClientConnection.")
 
 	s := &MPconnection{
-		connection{
+		connection: connection{
 			conn:                  conn,
 			config:                conf,
 			origDestConnID:        destConnID,
@@ -444,6 +464,7 @@ var newMPClientConnection = func(
 			PathValidationSuccess: false,
 			Migration:             false,
 		},
+		PacketHandler: nil,
 	}
 
 	s.connIDManager = newConnIDManager(

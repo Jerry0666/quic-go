@@ -188,6 +188,13 @@ type Connection interface {
 type MPConnection interface {
 	Connection
 	Hello()
+
+	//Set the second conn for the migration
+	SetSecondConn(c net.PacketConn) error
+
+	// InitiatePathValidation() error
+	// //Migrate from the original conn to conn2
+	// Migration() error
 }
 
 // An EarlyConnection is a connection that is handshaking.

@@ -205,7 +205,9 @@ func dialContext(
 	//need to add second conn, on packetHandlerMap struct
 	packetMap, ok := packetHandlers.(*packetHandlerMap)
 	if ok {
-		packetMap.setSecondConn(conn2, nil)
+		//packetMap.setSecondConn(conn2, nil)
+	} else {
+		utils.DebugLogErr("convert packetMap error!")
 	}
 	if err != nil {
 		return nil, err
@@ -232,6 +234,16 @@ func dialContext(
 	}
 	if err := c.dial(ctx); err != nil {
 		return nil, err
+	}
+	if enableMPQuic {
+		mpConn, ok := c.conn.(*MPconnection)
+		if !ok {
+			//should be ok
+			utils.DebugLogErr("enableMPQuic but mpConn convert error!")
+		} else {
+			utils.DebugNormolLog("set the MPconnection PacketHandler.")
+			mpConn.PacketHandler = packetMap
+		}
 	}
 	return c.conn, nil
 }
@@ -337,20 +349,20 @@ func (c *client) dial(ctx context.Context) error {
 
 	c.packetHandlers.Add(c.srcConnID, c.conn)
 	if c.conn2 != nil {
-		utils.TemporaryLog("conn2 is already set, set the sendQueue!")
-		clientConn, ok := c.conn.(*MPconnection)
-		if !ok {
-			utils.DebugLogErr("client conn convert error")
-			goto afterSetSecondConn
-		}
-		sendQ, ok := clientConn.sendQueue.(*sendQueue)
-		if !ok {
-			utils.DebugLogErr("sendQ convert error")
-			goto afterSetSecondConn
-		}
-		sendQ.SetSecondConn(c.conn2)
+		// utils.TemporaryLog("conn2 is already set, set the sendQueue!")
+		// clientConn, ok := c.conn.(*MPconnection)
+		// if !ok {
+		// 	utils.DebugLogErr("client conn convert error")
+		// 	goto afterSetSecondConn
+		// }
+		// sendQ, ok := clientConn.sendQueue.(*sendQueue)
+		// if !ok {
+		// 	utils.DebugLogErr("sendQ convert error")
+		// 	goto afterSetSecondConn
+		// }
+		// sendQ.SetSecondConn(c.conn2)
 	}
-afterSetSecondConn:
+	//afterSetSecondConn:
 	errorChan := make(chan error, 1)
 	go func() {
 		err := c.conn.run() // returns as soon as the connection is closed
