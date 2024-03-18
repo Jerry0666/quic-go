@@ -167,6 +167,12 @@ func (m *MPconnection) SetSecondConn(conn net.PacketConn) error {
 	}
 
 	m.PacketHandler.setSecondConn(conn, nil)
+	m.connIDManager.SetSecondConnID()
+	return nil
+}
+
+func (m *MPconnection) InitiatePathValidation() error {
+
 	return nil
 }
 
@@ -336,6 +342,7 @@ var newConnection = func(
 		func(token protocol.StatelessResetToken) { runner.AddResetToken(token, s) },
 		runner.RemoveResetToken,
 		s.queueControlFrame,
+		protocol.PerspectiveServer,
 	)
 	s.connIDGenerator = newConnIDGenerator(
 		srcConnID,
@@ -422,7 +429,7 @@ var newConnection = func(
 	p, ok := s.packer.(*packetPacker)
 	if ok {
 		utils.TemporaryLog("set the second conn id!")
-		p.SetSecondConn(s.connIDManager.GetSecondConn)
+		p.SetSecondConnID(s.connIDManager.GetSecondConnID)
 	}
 	s.unpacker = newPacketUnpacker(cs, s.srcConnIDLen)
 	s.cryptoStreamManager = newCryptoStreamManager(cs, initialStream, handshakeStream, s.oneRTTStream)
@@ -472,6 +479,7 @@ var newMPClientConnection = func(
 		func(token protocol.StatelessResetToken) { runner.AddResetToken(token, s) },
 		runner.RemoveResetToken,
 		s.queueControlFrame,
+		protocol.PerspectiveClient,
 	)
 	s.connIDGenerator = newConnIDGenerator(
 		srcConnID,
@@ -550,7 +558,7 @@ var newMPClientConnection = func(
 	//set the second conn id
 	p, ok := s.packer.(*packetPacker)
 	if ok {
-		p.SetSecondConn(s.connIDManager.GetSecondConn)
+		p.SetSecondConnID(s.connIDManager.GetSecondConnID)
 	}
 	if len(tlsConf.ServerName) > 0 {
 		s.tokenStoreKey = tlsConf.ServerName
@@ -607,6 +615,7 @@ var newClientConnection = func(
 		func(token protocol.StatelessResetToken) { runner.AddResetToken(token, s) },
 		runner.RemoveResetToken,
 		s.queueControlFrame,
+		protocol.PerspectiveClient,
 	)
 	s.connIDGenerator = newConnIDGenerator(
 		srcConnID,
@@ -684,7 +693,7 @@ var newClientConnection = func(
 	//set the second conn id
 	p, ok := s.packer.(*packetPacker)
 	if ok {
-		p.SetSecondConn(s.connIDManager.GetSecondConn)
+		p.SetSecondConnID(s.connIDManager.GetSecondConnID)
 	}
 	if len(tlsConf.ServerName) > 0 {
 		s.tokenStoreKey = tlsConf.ServerName

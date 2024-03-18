@@ -161,8 +161,7 @@ func newPacketHandlerMap(
 
 func (h *packetHandlerMap) setSecondConn(c net.PacketConn, logger utils.Logger) error {
 	if err := setReceiveBuffer(c, logger); err != nil {
-		utils.DebugLogErr("setReceiveBuffer err")
-		utils.DebugLogErr("err:%v", err)
+		utils.DebugLogErr("setReceiveBuffer err: %v", err)
 		return err
 	}
 

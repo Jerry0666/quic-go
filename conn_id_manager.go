@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -39,6 +40,9 @@ type connIDManager struct {
 	addStatelessResetToken    func(protocol.StatelessResetToken)
 	removeStatelessResetToken func(protocol.StatelessResetToken)
 	queueControlFrame         func(wire.Frame)
+
+	// Add perspective for test, temporarily add, need to modify
+	perspective protocol.Perspective
 }
 
 func newConnIDManager(
@@ -46,12 +50,14 @@ func newConnIDManager(
 	addStatelessResetToken func(protocol.StatelessResetToken),
 	removeStatelessResetToken func(protocol.StatelessResetToken),
 	queueControlFrame func(wire.Frame),
+	perspective protocol.Perspective,
 ) *connIDManager {
 	return &connIDManager{
 		activeConnectionID:        initialDestConnID,
 		addStatelessResetToken:    addStatelessResetToken,
 		removeStatelessResetToken: removeStatelessResetToken,
 		queueControlFrame:         queueControlFrame,
+		perspective:               perspective,
 	}
 }
 
@@ -166,10 +172,9 @@ func (h *connIDManager) updateConnectionID() {
 
 	front := h.queue.Remove(h.queue.Front())
 	//add the second path connection id
-	utils.TemporaryLog("set the second path conn id")
-	secondConnID := h.queue.Remove(h.queue.Front())
-	h.secondPathConnectionID = secondConnID.ConnectionID
-	utils.TemporaryLog("second connection id:%v", h.secondPathConnectionID)
+	if h.perspective == protocol.PerspectiveServer {
+		h.SetSecondConnID()
+	}
 
 	h.activeSequenceNumber = front.SequenceNumber
 	h.activeConnectionID = front.ConnectionID
@@ -177,6 +182,19 @@ func (h *connIDManager) updateConnectionID() {
 	h.packetsSinceLastChange = 0
 	h.packetsPerConnectionID = protocol.PacketsPerConnectionID/2 + uint32(h.rand.Int31n(protocol.PacketsPerConnectionID))
 	h.addStatelessResetToken(*h.activeStatelessResetToken)
+}
+
+func (h *connIDManager) SetSecondConnID() error {
+	if h.queue.Len() == 0 {
+		err := errors.New("[connIDManager] SetSecondConnID error.")
+		return err
+	}
+	//add the second path connection id
+	utils.TemporaryLog("[connIDManger] SetSecondConnID.")
+	secondConnID := h.queue.Remove(h.queue.Front())
+	h.secondPathConnectionID = secondConnID.ConnectionID
+	utils.TemporaryLog("second connection id:%v", h.secondPathConnectionID)
+	return nil
 }
 
 func (h *connIDManager) Close() {
@@ -229,7 +247,7 @@ func (h *connIDManager) Get() protocol.ConnectionID {
 	return h.activeConnectionID
 }
 
-func (h *connIDManager) GetSecondConn() protocol.ConnectionID {
+func (h *connIDManager) GetSecondConnID() protocol.ConnectionID {
 	return h.secondPathConnectionID
 }
 

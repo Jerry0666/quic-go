@@ -192,7 +192,7 @@ type MPConnection interface {
 	//Set the second conn for the migration
 	SetSecondConn(c net.PacketConn) error
 
-	// InitiatePathValidation() error
+	InitiatePathValidation() error
 	// //Migrate from the original conn to conn2
 	// Migration() error
 }

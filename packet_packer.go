@@ -197,7 +197,7 @@ func newPacketPacker(srcConnID protocol.ConnectionID, getDestConnID func() proto
 	}
 }
 
-func (p *packetPacker) SetSecondConn(getDestConnID2 func() protocol.ConnectionID) {
+func (p *packetPacker) SetSecondConnID(getDestConnID2 func() protocol.ConnectionID) {
 	p.getDestConnID2 = getDestConnID2
 }
 
