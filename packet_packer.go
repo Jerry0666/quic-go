@@ -652,7 +652,7 @@ func (p *packetPacker) maybeGetAppDataPacket(maxPayloadSize protocol.ByteCount, 
 }
 
 func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAck, ackAllowed bool, v protocol.VersionNumber) payload {
-	utils.DebugLogEnterfunc("[packetPacker] composeNextPacket.")
+	utils.DebugLogEnterfunc("[packetPacker] composeNextPacket. time:%v", time.Now())
 	if onlyAck {
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, true); ack != nil {
 			return payload{
@@ -669,6 +669,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 		p.Conn.PathValidationLock.Lock()
 		utils.TemporaryLog("now Path Validation State is PVstate_composeNextPacket")
 		var lengthAdded protocol.ByteCount
+		utils.TemporaryLog("[PathValidationframer] AppendControlFrames. Time:%v", time.Now())
 		pl.frames, lengthAdded = p.Conn.PathValidationframer.AppendControlFrames(pl.frames, maxFrameSize-pl.length, v)
 		pl.length += lengthAdded
 		p.Conn.PathValidationState = PVstate_sendPacket

@@ -195,11 +195,14 @@ func (m *MPconnection) InitiatePathValidation() error {
 		m.clientChallengeData = data
 		utils.TemporaryLog("challenge frame:")
 		utils.TemporaryLog("%v", path_ch)
+		utils.TemporaryLog("Queue PathChallenge Frame. Time:%v", time.Now())
 		m.PathValidationframer.QueueControlFrame(&path_ch)
 		m.PathValidationLock.Lock()
 		m.PathValidationState = PVstate_PackPacket
 		utils.TemporaryLog("set the state PVstate_PackPacket")
 		m.PathValidationLock.Unlock()
+		utils.TemporaryLog("send the packet directly.")
+		m.sendPacket()
 	}
 
 	//need a timeout mechanism
@@ -211,7 +214,7 @@ func (m *MPconnection) InitiatePathValidation() error {
 func (m *MPconnection) PVTimeout() {
 	// Do not do retransmit here
 	utils.TemporaryLog("start Timing! time:%v", time.Now())
-	time.Sleep(30 * time.Second)
+	time.Sleep(5 * time.Second)
 	utils.TemporaryLog("timeout. time:%v", time.Now())
 	if !m.PathValidationSuccess {
 		utils.DebugLogErr("path validation time out!!!")
@@ -1797,7 +1800,7 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 	if s.perspective == protocol.PerspectiveClient {
-		utils.TemporaryLog("client receive path challenge!")
+		utils.TemporaryLog("client receive path challenge! time:%v", time.Now())
 		s.PathValidationframer.QueueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
 		s.PathValidationLock.Lock()
 		s.PathValidationState = PVstate_PackPacket
@@ -1814,6 +1817,7 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 		s.PathValidationframer.QueueControlFrame(&path_ch)
 		s.PathValidationState = PVstate_PackPacket
 		s.PathValidationLock.Unlock()
+		s.sendPacket()
 		return
 	}
 
