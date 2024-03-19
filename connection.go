@@ -202,6 +202,34 @@ func (m *MPconnection) InitiatePathValidation() error {
 		m.PathValidationLock.Unlock()
 	}
 
+	//need a timeout mechanism
+	go m.PVTimeout()
+
+	return nil
+}
+
+func (m *MPconnection) PVTimeout() {
+	// Do not do retransmit here
+	utils.TemporaryLog("start Timing! time:%v", time.Now())
+	time.Sleep(30 * time.Second)
+	utils.TemporaryLog("timeout. time:%v", time.Now())
+	if !m.PathValidationSuccess {
+		utils.DebugLogErr("path validation time out!!!")
+		// need to do something...
+	}
+
+}
+
+func (m *MPconnection) Migration() error {
+	if !m.PathValidationSuccess {
+		utils.DebugLogErr("PathValidation has not been successful yet")
+		err := errors.New("PathValidation is false")
+		return err
+	}
+	if m.perspective == protocol.PerspectiveClient {
+		m.clientMigration()
+	}
+
 	return nil
 }
 
@@ -304,18 +332,19 @@ type connection struct {
 	logger utils.Logger
 
 	// Path validation
-	PathValidationLock    sync.Mutex
-	PathValidationState   int
-	PathValidationframer  framerPV
+	PathValidationLock   sync.Mutex
+	PathValidationState  int
+	PathValidationframer framerPV
+	// Indicate path validation has been done and succeeded.
 	PathValidationSuccess bool
-	//Indicate it has been migrated
-	Migration bool
+	// Indicate it has been migrated
+	Migrationed bool
 
 	serverChallengeData [8]byte
 	clientChallengeData [8]byte
 
 	SecondRemoteAddr net.Addr
-	//Use this chan to track receive packet is from second addr. Only used by server.
+	// Use this chan to track receive packet is from second addr. Only used by server.
 	IsfromSecondAddr chan bool
 }
 
@@ -359,7 +388,7 @@ var newConnection = func(
 		PathValidationState:   PVstate_non,
 		PathValidationSuccess: false,
 		IsfromSecondAddr:      make(chan bool, 1),
-		Migration:             false,
+		Migrationed:           false,
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -498,7 +527,7 @@ var newMPClientConnection = func(
 			version:               v,
 			PathValidationState:   PVstate_non,
 			PathValidationSuccess: false,
-			Migration:             false,
+			Migrationed:           false,
 		},
 		PacketHandler: nil,
 	}
@@ -636,7 +665,7 @@ var newClientConnection = func(
 		version:               v,
 		PathValidationState:   PVstate_non,
 		PathValidationSuccess: false,
-		Migration:             false,
+		Migrationed:           false,
 	}
 
 	s.connIDManager = newConnIDManager(
@@ -1800,7 +1829,7 @@ func (s *connection) serverMigration() {
 		s.conn = s.conn2
 		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
-		s.Migration = true
+		s.Migrationed = true
 	}
 }
 
@@ -1815,7 +1844,7 @@ func (s *connection) clientMigration() {
 		}
 		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
-		s.Migration = true
+		s.Migrationed = true
 	}
 }
 
@@ -1844,7 +1873,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 		}
 		utils.TemporaryLog("path challenge success!")
 		s.PathValidationSuccess = true
-		s.clientMigration()
+		//s.clientMigration()
 		return
 	}
 }

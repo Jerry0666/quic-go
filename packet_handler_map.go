@@ -508,7 +508,7 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 				//utils.DebugLogErr("convert to connection error!!!")
 				mp, ok := handler.(*MPconnection)
 				if ok {
-					if mp.perspective == protocol.PerspectiveClient && mp.Migration && !h.MigrationBool {
+					if mp.perspective == protocol.PerspectiveClient && mp.Migrationed && !h.MigrationBool {
 						utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
 						h.MigrationBool = true
 						go h.migration()

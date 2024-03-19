@@ -124,6 +124,8 @@ func (h *sendQueue) Available() <-chan struct{} {
 func (h *sendQueue) Migration() {
 	utils.TemporaryLog("[sendQueue] migration")
 	h.conn = h.conn2
+	utils.TemporaryLog("[sendQueue] close conn2")
+	h.conn2.Close()
 }
 
 func (h *sendQueue) Run() error {
