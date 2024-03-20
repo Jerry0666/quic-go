@@ -213,12 +213,21 @@ func (m *MPconnection) InitiatePathValidation() error {
 
 func (m *MPconnection) PVTimeout() {
 	// Do not do retransmit here
-	utils.TemporaryLog("start Timing! time:%v", time.Now())
-	time.Sleep(5 * time.Second)
-	utils.TemporaryLog("timeout. time:%v", time.Now())
-	if !m.PathValidationSuccess {
-		utils.DebugLogErr("path validation time out!!!")
-		// need to do something...
+	TimeOutChan := make(chan struct{})
+	go func() {
+		time.Sleep(5 * time.Second)
+		TimeOutChan <- struct{}{}
+	}()
+
+	select {
+	case <-TimeOutChan:
+		utils.DebugLogErr("Path Validation time out!")
+	case <-m.PathValidationFinish:
+		if !m.PathValidationSuccess {
+			utils.DebugLogErr("Path Validation Failure!")
+		} else {
+			utils.TemporaryLog("check timeout success!")
+		}
 	}
 
 }
@@ -231,8 +240,11 @@ func (m *MPconnection) Migration() error {
 	}
 	if m.perspective == protocol.PerspectiveClient {
 		m.clientMigration()
+		m.PacketHandler.migration()
+		m.AlreadySetSecondConn = false
+		m.PathValidationSuccess = false
+		m.Migrationed = false
 	}
-
 	return nil
 }
 
@@ -349,6 +361,8 @@ type connection struct {
 	SecondRemoteAddr net.Addr
 	// Use this chan to track receive packet is from second addr. Only used by server.
 	IsfromSecondAddr chan bool
+	//Used to send a signal that PathValidation has been finished.
+	PathValidationFinish chan struct{}
 }
 
 var (
@@ -531,6 +545,7 @@ var newMPClientConnection = func(
 			PathValidationState:   PVstate_non,
 			PathValidationSuccess: false,
 			Migrationed:           false,
+			PathValidationFinish:  make(chan struct{}),
 		},
 		PacketHandler: nil,
 	}
@@ -1877,7 +1892,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame) {
 		}
 		utils.TemporaryLog("path challenge success!")
 		s.PathValidationSuccess = true
-		//s.clientMigration()
+		s.PathValidationFinish <- struct{}{}
 		return
 	}
 }

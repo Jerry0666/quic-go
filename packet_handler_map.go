@@ -410,7 +410,6 @@ func (h *packetHandlerMap) listen() {
 			} else {
 				h.close(err)
 			}
-			//h.close(err)
 			return
 		}
 		utils.DebugNormolLog("--------------------------------------------------------------------------------")
@@ -454,6 +453,7 @@ func (h *packetHandlerMap) listen2() {
 }
 
 func (h *packetHandlerMap) migration() {
+	h.MigrationBool = true
 	//check the mutex first
 	h.mutex.Lock()
 	h.conn.Close()
@@ -468,6 +468,7 @@ func (h *packetHandlerMap) migration() {
 
 	//wait listen2 break
 	<-h.MigrationBreakListen2
+	h.MigrationBool = false
 	go h.listen()
 }
 
@@ -504,19 +505,18 @@ func (h *packetHandlerMap) handlePacket(p *receivedPacket) {
 			}
 		} else { // existing connection
 			c, ok := handler.(*connection)
-			if !ok {
-				//utils.DebugLogErr("convert to connection error!!!")
-				mp, ok := handler.(*MPconnection)
-				if ok {
-					if mp.perspective == protocol.PerspectiveClient && mp.Migrationed && !h.MigrationBool {
-						utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
-						h.MigrationBool = true
-						go h.migration()
-					}
-				} else {
-					utils.DebugLogErr("convert connection or MPconnection error!")
-				}
-			}
+			// if !ok {
+			// 	mp, ok := handler.(*MPconnection)
+			// 	if ok {
+			// 		if mp.perspective == protocol.PerspectiveClient && mp.Migrationed && !h.MigrationBool {
+			// 			utils.TemporaryLog("client already been migrated, do the migration setting on packetHandlerMap!")
+			// 			h.MigrationBool = true
+			// 			go h.migration()
+			// 		}
+			// 	} else {
+			// 		utils.DebugLogErr("convert connection or MPconnection error!")
+			// 	}
+			// }
 			if ok { //server
 				if c.RemoteAddr().String() != p.remoteAddr.String() {
 					if c.SecondRemoteAddr != nil && c.SecondRemoteAddr.String() == p.remoteAddr.String() {
