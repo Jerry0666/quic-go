@@ -361,7 +361,7 @@ type connection struct {
 	SecondRemoteAddr net.Addr
 	// Use this chan to track receive packet is from second addr. Only used by server.
 	IsfromSecondAddr chan bool
-	//Used to send a signal that PathValidation has been finished.
+	// Used to send a signal that PathValidation has been finished.
 	PathValidationFinish chan struct{}
 }
 
@@ -1832,6 +1832,7 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 		s.PathValidationframer.QueueControlFrame(&path_ch)
 		s.PathValidationState = PVstate_PackPacket
 		s.PathValidationLock.Unlock()
+		s.connIDManager.SetSecondConnID()
 		s.sendPacket()
 		return
 	}
@@ -1848,7 +1849,8 @@ func (s *connection) serverMigration() {
 		s.conn = s.conn2
 		s.connIDManager.MigrationChangeConnID()
 		sendq.MigrationSign <- struct{}{}
-		s.Migrationed = true
+		//recovery
+		s.PathValidationSuccess = false
 	}
 }
 

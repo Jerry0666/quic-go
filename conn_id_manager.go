@@ -171,10 +171,6 @@ func (h *connIDManager) updateConnectionID() {
 	}
 
 	front := h.queue.Remove(h.queue.Front())
-	//add the second path connection id
-	if h.perspective == protocol.PerspectiveServer {
-		h.SetSecondConnID()
-	}
 
 	h.activeSequenceNumber = front.SequenceNumber
 	h.activeConnectionID = front.ConnectionID
