@@ -206,7 +206,6 @@ func GetReqId(req *http.Request) (int, error) {
 	}
 }
 func (r *RoundTripper) InitialMap() {
-	fmt.Println("initial Map")
 	r.StreamManager = make(map[int]*stream)
 	r.StreamWaiter = make(map[int]chan struct{})
 }
@@ -237,7 +236,6 @@ func (r *RoundTripper) GetReqStream(reqId int) *stream {
 		r.StreamWaiter[reqId] = make(chan struct{})
 		r.StrManMutex.Unlock()
 		<-r.StreamWaiter[reqId]
-		fmt.Println("receive wait signal")
 		//receive the signal, can get the stream
 		r.StrManMutex.Lock()
 		s = r.StreamManager[reqId]
