@@ -2,6 +2,7 @@ package quic
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/utils"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	maxDatagramSendQueueLen = 32
+	maxDatagramSendQueueLen = 512
 	maxDatagramRcvQueueLen  = 128
 )
 
@@ -54,6 +55,7 @@ func (h *datagramQueue) Add(f *wire.DatagramFrame) error {
 			h.hasData()
 			return nil
 		}
+		fmt.Println("Queue is full.")
 		select {
 		case <-h.sent: // drain the queue so we don't loop immediately
 		default:

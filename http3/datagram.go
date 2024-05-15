@@ -15,7 +15,7 @@ import (
 
 var ErrDatagramNegotiationNotFinished = errors.New("the datagram setting negotiation is not finished")
 
-const DatagramRcvQueueLen = 128
+const DatagramRcvQueueLen = 256
 
 type datagrammerMap struct {
 	mutex        sync.RWMutex
@@ -56,8 +56,13 @@ func (m *datagrammerMap) newStreamAssociatedDatagrammer(str quic.Stream) *stream
 }
 
 func (m *datagrammerMap) runReceiving() {
+	j := 0
 	for {
+		j++
 		data, err := m.conn.ReceiveDatagram(context.Background())
+		if j%50 == 0 {
+			fmt.Printf("j = %d\n", j)
+		}
 		if err != nil {
 			m.logger.Debugf("Stop receiving datagram: %s", err)
 			return
@@ -104,6 +109,7 @@ type streamAssociatedDatagrammer struct {
 	mutex    sync.Mutex
 	rcvQueue [][]byte
 	rcvd     chan struct{}
+	front    int
 
 	ctx context.Context
 }
@@ -125,9 +131,9 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byt
 	}
 	for {
 		d.mutex.Lock()
-		if len(d.rcvQueue) > 0 {
-			data := d.rcvQueue[0]
-			d.rcvQueue = d.rcvQueue[1:]
+		if len(d.rcvQueue)-d.front > 0 {
+			data := d.rcvQueue[d.front]
+			d.front++
 			d.mutex.Unlock()
 			return data, nil
 		}
@@ -146,7 +152,13 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byt
 }
 
 func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
-	d.mutex.Lock()
+	if len(d.rcvQueue) >= DatagramRcvQueueLen && d.front > 0 {
+		fmt.Printf("len:%d, front:%d\n", len(d.rcvQueue), d.front)
+		d.mutex.Lock()
+		d.rcvQueue = d.rcvQueue[d.front:]
+		d.front = 0
+		d.mutex.Unlock()
+	}
 	if len(d.rcvQueue) < DatagramRcvQueueLen {
 		d.rcvQueue = append(d.rcvQueue, data)
 		select {
@@ -154,5 +166,5 @@ func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
 		default:
 		}
 	}
-	d.mutex.Unlock()
+
 }
