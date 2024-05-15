@@ -152,8 +152,7 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byt
 }
 
 func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
-	if len(d.rcvQueue) >= DatagramRcvQueueLen && d.front > 0 {
-		fmt.Printf("len:%d, front:%d\n", len(d.rcvQueue), d.front)
+	if d.front > 64 {
 		d.mutex.Lock()
 		d.rcvQueue = d.rcvQueue[d.front:]
 		d.front = 0
