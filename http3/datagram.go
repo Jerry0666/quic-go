@@ -38,10 +38,11 @@ func newDatagrammerMap(conn quic.Connection, logger utils.Logger) *datagrammerMa
 
 func (m *datagrammerMap) newStreamAssociatedDatagrammer(str quic.Stream) *streamAssociatedDatagrammer {
 	d := &streamAssociatedDatagrammer{
-		str:  str,
-		conn: m.conn,
-		rcvd: make(chan struct{}),
-		ctx:  context.Background(),
+		str:     str,
+		conn:    m.conn,
+		rcvd:    make(chan struct{}),
+		ctx:     context.Background(),
+		rcvChan: make(chan []byte, 128),
 	}
 	m.mutex.Lock()
 	m.datagrammers[str.StreamID()] = d
@@ -104,6 +105,7 @@ type streamAssociatedDatagrammer struct {
 	mutex    sync.Mutex
 	rcvQueue [][]byte
 	rcvd     chan struct{}
+	rcvChan  chan []byte
 
 	ctx context.Context
 }
@@ -124,14 +126,12 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byt
 		return nil, errors.New("peer doesn't support datagram")
 	}
 	for {
-		d.mutex.Lock()
-		if len(d.rcvQueue) > 0 {
-			data := d.rcvQueue[0]
-			d.rcvQueue = d.rcvQueue[1:]
-			d.mutex.Unlock()
+
+		if len(d.rcvChan) > 0 {
+			data := <-d.rcvChan
 			return data, nil
 		}
-		d.mutex.Unlock()
+
 		select {
 		case <-d.rcvd:
 			continue
@@ -146,13 +146,13 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byt
 }
 
 func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
-	d.mutex.Lock()
+
 	if len(d.rcvQueue) < DatagramRcvQueueLen {
-		d.rcvQueue = append(d.rcvQueue, data)
+		d.rcvChan <- data
 		select {
 		case d.rcvd <- struct{}{}:
 		default:
 		}
 	}
-	d.mutex.Unlock()
+
 }
