@@ -2361,7 +2361,8 @@ func (s *connection) SendDatagram(p []byte) error {
 	}
 	f.Data = make([]byte, len(p))
 	copy(f.Data, p)
-	return s.datagramQueue.Add(f)
+	// use chan
+	return s.datagramQueue.AddtoChan(f)
 }
 
 func (s *connection) ReceiveDatagram(ctx context.Context) ([]byte, error) {

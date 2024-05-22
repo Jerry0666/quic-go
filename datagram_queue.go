@@ -2,6 +2,8 @@ package quic
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/utils"
@@ -26,19 +28,40 @@ type datagramQueue struct {
 	closeErr error
 	closed   chan struct{}
 
-	hasData func()
+	hasData  func()
+	sendChan chan *wire.DatagramFrame
+	recvChan chan []byte
 
 	logger utils.Logger
 }
 
 func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
 	return &datagramQueue{
-		hasData: hasData,
-		rcvd:    make(chan struct{}, 1),
-		sent:    make(chan struct{}, 1),
-		closed:  make(chan struct{}),
-		logger:  logger,
+		hasData:  hasData,
+		rcvd:     make(chan struct{}, 1),
+		sent:     make(chan struct{}, 1),
+		closed:   make(chan struct{}),
+		sendChan: make(chan *wire.DatagramFrame, 1024),
+		recvChan: make(chan []byte, 1024),
+		logger:   logger,
 	}
+}
+
+// Use chan to manage datagram frame
+func (h *datagramQueue) AddtoChan(f *wire.DatagramFrame) error {
+	if len(h.sendChan) < cap(h.sendChan) {
+		h.sendChan <- f
+		h.hasData()
+		return nil
+	} else {
+		fmt.Println("datagramQueue sendChan is full")
+		return errors.New("datagramQueue sendChan is full")
+	}
+}
+
+func (h *datagramQueue) PopfromChan() (*wire.DatagramFrame, error) {
+	f := <-h.sendChan
+	return f, nil
 }
 
 // Add queues a new DATAGRAM frame for sending.
@@ -94,16 +117,14 @@ func (h *datagramQueue) HandleDatagramFrame(f *wire.DatagramFrame) {
 	data := make([]byte, len(f.Data))
 	copy(data, f.Data)
 	var queued bool
-	h.rcvMx.Lock()
-	if len(h.rcvQueue) < maxDatagramRcvQueueLen {
-		h.rcvQueue = append(h.rcvQueue, data)
+	// use chan
+	if len(h.recvChan) < cap(h.recvChan) {
 		queued = true
-		select {
-		case h.rcvd <- struct{}{}:
-		default:
-		}
+		h.recvChan <- data
+	} else {
+		fmt.Println("datagram receive chan is full")
 	}
-	h.rcvMx.Unlock()
+
 	if !queued && h.logger.Debug() {
 		h.logger.Debugf("Discarding received DATAGRAM frame (%d bytes payload)", len(f.Data))
 	}
@@ -111,24 +132,8 @@ func (h *datagramQueue) HandleDatagramFrame(f *wire.DatagramFrame) {
 
 // Receive gets a received DATAGRAM frame.
 func (h *datagramQueue) Receive(ctx context.Context) ([]byte, error) {
-	for {
-		h.rcvMx.Lock()
-		if len(h.rcvQueue) > 0 {
-			data := h.rcvQueue[0]
-			h.rcvQueue = h.rcvQueue[1:]
-			h.rcvMx.Unlock()
-			return data, nil
-		}
-		h.rcvMx.Unlock()
-		select {
-		case <-h.rcvd:
-			continue
-		case <-h.closed:
-			return nil, h.closeErr
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	data := <-h.recvChan
+	return data, nil
 }
 
 func (h *datagramQueue) CloseWithError(e error) {
