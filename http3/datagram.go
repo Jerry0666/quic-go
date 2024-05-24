@@ -31,7 +31,7 @@ func newDatagrammerMap(conn quic.Connection, logger utils.Logger) *datagrammerMa
 		logger:       logger,
 	}
 
-	go m.runReceiving()
+	//go m.runReceiving()
 
 	return m
 }
@@ -93,6 +93,10 @@ type Datagrammer interface {
 	//      the client hasn't close the request stream yet
 	// * on the client side: datagrams can be received with the server hasn't close the response stream
 	ReceiveMessage(context.Context) ([]byte, error)
+
+	HardcodedRead(ctx context.Context) ([]byte, error)
+
+	GetQuicConn() quic.Connection
 }
 
 // streamAssociatedDatagrammer allows sending and receiving HTTP/3 datagrams before the associated quic
@@ -102,7 +106,6 @@ type streamAssociatedDatagrammer struct {
 	conn quic.Connection
 
 	buf      []byte
-	mutex    sync.Mutex
 	rcvQueue [][]byte
 	rcvd     chan struct{}
 	rcvChan  chan []byte
@@ -110,39 +113,32 @@ type streamAssociatedDatagrammer struct {
 	ctx context.Context
 }
 
+func (d *streamAssociatedDatagrammer) GetQuicConn() quic.Connection {
+	return d.conn
+}
+
 func (d *streamAssociatedDatagrammer) SendMessage(data []byte) error {
 	if !d.conn.ConnectionState().SupportsDatagrams {
 		return errors.New("peer doesn't support datagram")
 	}
 
-	d.buf = d.buf[:0]
-	d.buf = (&datagramFrame{QuarterStreamID: uint64(d.str.StreamID() / 4)}).Append(d.buf)
-	d.buf = append(d.buf, data...)
-	return d.conn.SendDatagram(d.buf)
+	// d.buf = d.buf[:0]
+	// d.buf = (&datagramFrame{QuarterStreamID: uint64(d.str.StreamID() / 4)}).Append(d.buf)
+	// d.buf = append(d.buf, data...)
+	return d.conn.SendDatagram(data)
+}
+
+func (d *streamAssociatedDatagrammer) HardcodedRead(ctx context.Context) ([]byte, error) {
+	data, err := d.conn.ReceiveDatagram(ctx)
+	return data, err
 }
 
 func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byte, error) {
 	if !d.conn.ConnectionState().SupportsDatagrams {
 		return nil, errors.New("peer doesn't support datagram")
 	}
-	for {
-
-		if len(d.rcvChan) > 0 {
-			data := <-d.rcvChan
-			return data, nil
-		}
-
-		select {
-		case <-d.rcvd:
-			continue
-		case <-d.str.Context().Done():
-			return nil, fmt.Errorf("the corresponding stream is closed")
-		case <-d.ctx.Done():
-			return nil, d.ctx.Err()
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	data := <-d.rcvChan
+	return data, nil
 }
 
 func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
@@ -153,6 +149,8 @@ func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {
 		case d.rcvd <- struct{}{}:
 		default:
 		}
+	} else {
+		fmt.Println("rcv Queue is full")
 	}
 
 }

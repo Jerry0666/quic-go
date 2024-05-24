@@ -44,6 +44,10 @@ func newStream(conn *connection, str quic.Stream, onFrameError func()) *stream {
 	}
 }
 
+func (s *stream) GetConn() quic.Connection {
+	return s.conn.Connection
+}
+
 func (s *stream) Read(b []byte) (int, error) {
 	if s.bytesRemainingInFrame == 0 {
 	parseLoop:
