@@ -119,6 +119,8 @@ type RoundTripper struct {
 	//map every request to a stream
 	StreamManager map[int]*stream
 	StreamWaiter  map[int]chan struct{}
+
+	TempConn quic.EarlyConnection
 }
 
 var (
@@ -281,6 +283,7 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		dial := r.Dial
 		if dial == nil {
 			if r.transport == nil {
+				fmt.Println("r.transport is nil.")
 				udpConn, err := net.ListenUDP("udp", nil)
 				if err != nil {
 					return nil, false, err
@@ -306,6 +309,9 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		if err != nil {
 			return nil, false, err
 		}
+		//test
+		testC := getRawClient(c)
+		testC.SetDialQ(r.makeDialerQ())
 		client = &roundTripCloserWithCount{roundTripCloser: c}
 		r.clients[hostname] = client
 	} else if client.HandshakeComplete() {
@@ -383,6 +389,16 @@ func (r *RoundTripper) makeDialer() func(ctx context.Context, addr string, tlsCf
 			return nil, err
 		}
 		return r.transport.DialEarly(ctx, udpAddr, tlsCfg, cfg)
+	}
+}
+
+func (r *RoundTripper) makeDialerQ() func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.Connection, error) {
+	return func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.Connection, error) {
+		udpAddr, err := net.ResolveUDPAddr("udp", addr)
+		if err != nil {
+			return nil, err
+		}
+		return r.transport.Dial(ctx, udpAddr, tlsCfg, cfg)
 	}
 }
 

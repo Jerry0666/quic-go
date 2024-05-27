@@ -224,7 +224,9 @@ type Server struct {
 
 	altSvcHeader string
 
-	logger utils.Logger
+	logger   utils.Logger
+	TempConn quic.EarlyConnection
+	C1       chan struct{}
 }
 
 // ListenAndServe listens on the UDP address s.Addr and calls s.Handler to handle HTTP/3 requests on incoming connections.
@@ -288,11 +290,14 @@ func (s *Server) ServeListener(ln QUICEarlyListener) error {
 		if err != nil {
 			return err
 		}
-		go func() {
-			if err := s.handleConn(conn); err != nil {
-				s.logger.Debugf("handling connection failed: %s", err)
-			}
-		}()
+		s.TempConn = conn
+		s.C1 <- struct{}{}
+
+		// go func() {
+		// 	if err := s.handleConn(conn); err != nil {
+		// 		s.logger.Debugf("handling connection failed: %s", err)
+		// 	}
+		// }()
 	}
 }
 

@@ -37,6 +37,8 @@ var defaultQuicConfig = &quic.Config{
 
 type dialFunc func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error)
 
+type dialQconnFunc func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.Connection, error)
+
 var dialAddr dialFunc = quic.DialAddrEarly
 
 type roundTripperOpts struct {
@@ -56,6 +58,7 @@ type client struct {
 
 	dialOnce     sync.Once
 	dialer       dialFunc
+	dialerQ      dialQconnFunc
 	handshakeErr error
 
 	receivedSettings chan struct{} // closed once the server's SETTINGS frame was processed
@@ -75,6 +78,16 @@ type client struct {
 }
 
 var _ roundTripCloser = &client{}
+
+func getRawClient(r roundTripCloser) *client {
+	c, ok := r.(*client)
+	if !ok {
+		fmt.Println("convert to http3 client struct err")
+		return nil
+	} else {
+		return c
+	}
+}
 
 func newClient(hostname string, tlsConf *tls.Config, opts *roundTripperOpts, conf *quic.Config, dialer dialFunc) (roundTripCloser, error) {
 	if conf == nil {
@@ -122,11 +135,14 @@ func newClient(hostname string, tlsConf *tls.Config, opts *roundTripperOpts, con
 	}, nil
 }
 
+func (c *client) SetDialQ(d dialQconnFunc) {
+	c.dialerQ = d
+}
+
 func (c *client) dial(ctx context.Context) error {
 	var err error
 	var conn quic.EarlyConnection
 	if c.dialer != nil {
-		fmt.Println("if")
 		conn, err = c.dialer(ctx, c.hostname, c.tlsConf, c.config)
 	} else {
 		conn, err = dialAddr(ctx, c.hostname, c.tlsConf, c.config)
@@ -137,6 +153,12 @@ func (c *client) dial(ctx context.Context) error {
 	c.conn.Store(&conn)
 
 	c.dconn = &connection{Connection: *c.conn.Load(), logger: c.logger}
+	fmt.Println("set the quic conn")
+	c.rt.TempConn = conn
+	test := true
+	if test {
+		return nil
+	}
 
 	// send the SETTINGs frame, using 0-RTT data, if possible
 	go func() {
@@ -295,6 +317,12 @@ func (c *client) roundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Respon
 	})
 	if c.handshakeErr != nil {
 		return nil, c.handshakeErr
+	}
+
+	fmt.Println("return here")
+	test := true
+	if test {
+		return nil, nil
 	}
 
 	// At this point, c.conn is guaranteed to be set.
