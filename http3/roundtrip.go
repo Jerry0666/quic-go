@@ -283,7 +283,6 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		dial := r.Dial
 		if dial == nil {
 			if r.transport == nil {
-				fmt.Println("r.transport is nil.")
 				udpConn, err := net.ListenUDP("udp", nil)
 				if err != nil {
 					return nil, false, err

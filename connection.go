@@ -2258,22 +2258,18 @@ func (s *connection) AcceptUniStream(ctx context.Context) (ReceiveStream, error)
 
 // OpenStream opens a stream
 func (s *connection) OpenStream() (Stream, error) {
-	fmt.Println("openStream")
 	return s.streamsMap.OpenStream()
 }
 
 func (s *connection) OpenStreamSync(ctx context.Context) (Stream, error) {
-	fmt.Println("OpenStreamSync")
 	return s.streamsMap.OpenStreamSync(ctx)
 }
 
 func (s *connection) OpenUniStream() (SendStream, error) {
-	fmt.Println("OpenUniStream")
 	return s.streamsMap.OpenUniStream()
 }
 
 func (s *connection) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
-	fmt.Println("OpenUniStreamSync")
 	return s.streamsMap.OpenUniStreamSync(ctx)
 }
 

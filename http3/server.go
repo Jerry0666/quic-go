@@ -268,7 +268,6 @@ func (s *Server) ServeQUICConn(conn quic.Connection) error {
 		s.logger = utils.DefaultLogger.WithPrefix("server")
 	}
 	s.mutex.Unlock()
-
 	return s.handleConn(conn)
 }
 
@@ -293,11 +292,12 @@ func (s *Server) ServeListener(ln QUICEarlyListener) error {
 		s.TempConn = conn
 		s.C1 <- struct{}{}
 
-		// go func() {
-		// 	if err := s.handleConn(conn); err != nil {
-		// 		s.logger.Debugf("handling connection failed: %s", err)
-		// 	}
-		// }()
+		//modify here
+		go func() {
+			if err := s.handleConn(conn); err != nil {
+				s.logger.Debugf("handling connection failed: %s", err)
+			}
+		}()
 	}
 }
 
@@ -451,7 +451,7 @@ func (s *Server) handleConn(qc quic.Connection) error {
 	conn := &connection{Connection: qc, logger: s.logger}
 	decoder := qpack.NewDecoder(nil)
 
-	// send a SETTINGS frame
+	//send a SETTINGS frame
 	str, err := conn.OpenUniStream()
 	if err != nil {
 		return fmt.Errorf("opening the control stream failed: %w", err)

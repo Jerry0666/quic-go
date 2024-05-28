@@ -153,12 +153,7 @@ func (c *client) dial(ctx context.Context) error {
 	c.conn.Store(&conn)
 
 	c.dconn = &connection{Connection: *c.conn.Load(), logger: c.logger}
-	fmt.Println("set the quic conn")
 	c.rt.TempConn = conn
-	test := true
-	if test {
-		return nil
-	}
 
 	// send the SETTINGs frame, using 0-RTT data, if possible
 	go func() {
@@ -319,12 +314,6 @@ func (c *client) roundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Respon
 		return nil, c.handshakeErr
 	}
 
-	fmt.Println("return here")
-	test := true
-	if test {
-		return nil, nil
-	}
-
 	// At this point, c.conn is guaranteed to be set.
 	conn := *c.conn.Load()
 
@@ -380,6 +369,7 @@ func (c *client) roundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Respon
 	if opt.DontCloseRequestStream {
 		doneChan = nil
 	}
+	// modify here
 	rsp, rerr := c.doRequest(req, c.dconn, str, opt, doneChan)
 	if rerr.err != nil { // if any error occurred
 		close(reqDone)
