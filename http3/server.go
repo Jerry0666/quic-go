@@ -226,7 +226,6 @@ type Server struct {
 
 	logger   utils.Logger
 	TempConn quic.EarlyConnection
-	C1       chan struct{}
 }
 
 // ListenAndServe listens on the UDP address s.Addr and calls s.Handler to handle HTTP/3 requests on incoming connections.
@@ -290,7 +289,6 @@ func (s *Server) ServeListener(ln QUICEarlyListener) error {
 			return err
 		}
 		s.TempConn = conn
-		s.C1 <- struct{}{}
 
 		//modify here
 		go func() {

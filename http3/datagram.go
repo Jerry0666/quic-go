@@ -25,13 +25,14 @@ type datagrammerMap struct {
 }
 
 func newDatagrammerMap(conn quic.Connection, logger utils.Logger) *datagrammerMap {
+	fmt.Println("newDatagrammerMap")
 	m := &datagrammerMap{
 		conn:         conn,
 		datagrammers: make(map[protocol.StreamID]*streamAssociatedDatagrammer),
 		logger:       logger,
 	}
 
-	//go m.runReceiving()
+	go m.runReceiving()
 
 	return m
 }
@@ -92,7 +93,7 @@ type Datagrammer interface {
 	// * on the server side: datagrams can be received while the request handler hasn't returned, AND
 	//      the client hasn't close the request stream yet
 	// * on the client side: datagrams can be received with the server hasn't close the response stream
-	ReceiveMessage(context.Context) ([]byte, error)
+	ReceiveMessage() ([]byte, error)
 
 	HardcodedRead(ctx context.Context) ([]byte, error)
 
@@ -125,7 +126,15 @@ func (d *streamAssociatedDatagrammer) SendMessage(data []byte) error {
 	// d.buf = d.buf[:0]
 	// d.buf = (&datagramFrame{QuarterStreamID: uint64(d.str.StreamID() / 4)}).Append(d.buf)
 	// d.buf = append(d.buf, data...)
-	return d.conn.SendDatagram(data)
+	strID := d.str.StreamID()
+	if strID > 63 {
+		fmt.Println("stream id is bigger than 63, so length byte is more than one.")
+	}
+	lenByte := byte(strID / 4)
+	sendData := make([]byte, 0)
+	sendData = append(sendData, lenByte)
+	sendData = append(sendData, data...)
+	return d.conn.SendDatagram(sendData)
 }
 
 func (d *streamAssociatedDatagrammer) HardcodedRead(ctx context.Context) ([]byte, error) {
@@ -133,7 +142,7 @@ func (d *streamAssociatedDatagrammer) HardcodedRead(ctx context.Context) ([]byte
 	return data, err
 }
 
-func (d *streamAssociatedDatagrammer) ReceiveMessage(ctx context.Context) ([]byte, error) {
+func (d *streamAssociatedDatagrammer) ReceiveMessage() ([]byte, error) {
 	if !d.conn.ConnectionState().SupportsDatagrams {
 		return nil, errors.New("peer doesn't support datagram")
 	}

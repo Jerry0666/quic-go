@@ -176,7 +176,9 @@ func (r *RoundTripper) RoundTripOpt(req *http.Request, opt RoundTripOpt) (*http.
 	}
 
 	hostname := authorityAddr("https", hostnameFromRequest(req))
+	fmt.Printf("hostname: %s\n", hostname)
 	cl, isReused, err := r.getClient(hostname, opt.OnlyCachedConn)
+	fmt.Printf("isReused: %v\n", isReused)
 	if err != nil {
 		return nil, err
 	}
