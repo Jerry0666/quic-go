@@ -211,6 +211,16 @@ type connection struct {
 	logID  string
 	tracer *logging.ConnectionTracer
 	logger utils.Logger
+
+	*Transport
+}
+
+func (s *connection) GetTransport() *Transport {
+	return s.Transport
+}
+
+func (s *connection) SetTransport(t *Transport) {
+	s.Transport = t
 }
 
 var (

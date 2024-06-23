@@ -202,6 +202,11 @@ type Connection interface {
 	SendDatagram(payload []byte) error
 	// ReceiveDatagram gets a message received in a datagram, as specified in RFC 9221.
 	ReceiveDatagram(context.Context) ([]byte, error)
+
+	// Because Transport is the central point to manage incoming and outgoing QUIC connections.
+	// So Add function to set and get it.
+	GetTransport() *Transport
+	SetTransport(*Transport)
 }
 
 // An EarlyConnection is a connection that is handshaking.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -42,6 +43,34 @@ type client struct {
 // make it possible to mock connection ID for initial generation in the tests
 var generateConnectionIDForInitial = protocol.GenerateConnectionIDForInitial
 
+// Same as DialAddr, but with specified local addr.
+func DialAddrFix(ctx context.Context, addr string, tlsConf *tls.Config, conf *Config, laddr string, port int) (Connection, error) {
+	localIP := net.ParseIP(laddr)
+	if localIP == nil {
+		fmt.Println("laddr ip format is wrong, so localIP is nil")
+		port = 0
+	}
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localIP, Port: port})
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("[temp] local udpConn addr: %s\n", udpConn.LocalAddr().String())
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	tr, err := setupTransport(udpConn, tlsConf, true)
+	if err != nil {
+		return nil, err
+	}
+	c, err := tr.dial(ctx, udpAddr, addr, tlsConf, conf, false)
+	if err != nil {
+		return nil, err
+	}
+	c.SetTransport(tr)
+	return c, nil
+}
+
 // DialAddr establishes a new QUIC connection to a server.
 // It resolves the address, and then creates a new UDP connection to dial the QUIC server.
 // When the QUIC connection is closed, this UDP connection is closed.
@@ -51,6 +80,7 @@ func DialAddr(ctx context.Context, addr string, tlsConf *tls.Config, conf *Confi
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("[temp] local udpConn addr: %s\n", udpConn.LocalAddr().String())
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, err
@@ -59,7 +89,12 @@ func DialAddr(ctx context.Context, addr string, tlsConf *tls.Config, conf *Confi
 	if err != nil {
 		return nil, err
 	}
-	return tr.dial(ctx, udpAddr, addr, tlsConf, conf, false)
+	c, err := tr.dial(ctx, udpAddr, addr, tlsConf, conf, false)
+	if err != nil {
+		return nil, err
+	}
+	c.SetTransport(tr)
+	return c, nil
 }
 
 // DialAddrEarly establishes a new 0-RTT QUIC connection to a server.

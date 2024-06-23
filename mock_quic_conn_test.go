@@ -36,6 +36,14 @@ func NewMockQUICConn(ctrl *gomock.Controller) *MockQUICConn {
 	return mock
 }
 
+func (m *MockQUICConn) GetTransport() *Transport{
+	return nil
+}
+
+func (m *MockQUICConn) SetTransport(*Transport) {
+	
+}
+
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockQUICConn) EXPECT() *MockQUICConnMockRecorder {
 	return m.recorder

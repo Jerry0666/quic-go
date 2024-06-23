@@ -23,8 +23,8 @@ var errListenerAlreadySet = errors.New("listener already set")
 // QUIC demultiplexes connections based on their QUIC Connection IDs, not based on the 4-tuple.
 // This means that a single UDP socket can be used for listening for incoming connections, as well as
 // for dialing an arbitrary number of outgoing connections.
-// A Transport handles a single net.PacketConn, and offers a range of configuration options
-// compared to the simple helper functions like Listen and Dial that this package provides.
+
+// modify to have two connection
 type Transport struct {
 	// A single net.PacketConn can only be handled by one Transport.
 	// Bad things will happen if passed to multiple Transports.
@@ -40,6 +40,9 @@ type Transport struct {
 	//
 	// After passing the connection to the Transport, it's invalid to call ReadFrom or WriteTo on the connection.
 	Conn net.PacketConn
+
+	// Backup connection
+	Conn2 net.PacketConn
 
 	// The length of the connection ID in bytes.
 	// It can be any value between 1 and 20.
@@ -109,7 +112,8 @@ type Transport struct {
 
 	server *baseServer
 
-	conn rawConn
+	conn  rawConn
+	conn2 rawConn
 
 	closeQueue          chan closePacket
 	statelessResetQueue chan receivedPacket
@@ -123,6 +127,36 @@ type Transport struct {
 	nonQUICPackets        chan receivedPacket
 
 	logger utils.Logger
+}
+
+// Set the backup conn
+func (t *Transport) SetBackupConn(ip string, port int) {
+	localIP := net.ParseIP(ip)
+	if localIP == nil {
+		fmt.Println("laddr ip format is wrong, so localIP is nil")
+		port = 0
+	}
+	udpConn, err := net.ListenUDP("udp", &net.UDPAddr{IP: localIP, Port: port})
+	if err != nil {
+		fmt.Println("net.ListenUDP error")
+	}
+	t.Conn2 = udpConn
+	fmt.Println("[trace] set Transport raw conn 2")
+
+	var conn rawConn
+	if c, ok := t.Conn2.(rawConn); ok {
+		fmt.Println("[temp] convert rawConn ok!")
+		conn = c
+	} else {
+		fmt.Println("[temp] convert rawConn not ok!")
+		var err error
+		conn, err = wrapConn(t.Conn2)
+		if err != nil {
+			t.initErr = err
+			return
+		}
+	}
+	t.conn2 = conn
 }
 
 // Listen starts listening for incoming QUIC connections.
@@ -215,8 +249,10 @@ func (t *Transport) init(allowZeroLengthConnIDs bool) error {
 	t.initOnce.Do(func() {
 		var conn rawConn
 		if c, ok := t.Conn.(rawConn); ok {
+			fmt.Println("[temp] convert rawConn ok!")
 			conn = c
 		} else {
+			fmt.Println("[temp] convert rawConn not ok!")
 			var err error
 			conn, err = wrapConn(t.Conn)
 			if err != nil {
