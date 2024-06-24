@@ -15,6 +15,7 @@ type sendConn interface {
 	RemoteAddr() net.Addr
 
 	capabilities() connCapabilities
+	GetRawConn() rawConn
 }
 
 type sconn struct {
@@ -56,6 +57,10 @@ func newSendConn(c rawConn, remote net.Addr, info packetInfo, logger utils.Logge
 		packetInfoOOB: oob,
 		logger:        logger,
 	}
+}
+
+func (c *sconn) GetRawConn() rawConn {
+	return c.rawConn
 }
 
 func (c *sconn) Write(p []byte, gsoSize uint16, ecn protocol.ECN) error {
