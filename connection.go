@@ -134,6 +134,10 @@ type connection struct {
 	conn      sendConn
 	sendQueue sender
 
+	// backup connection, for the migration.
+	conn2 sendConn
+	// May also need sendQueue2? now use the same sender.
+
 	streamsMap      streamManager
 	connIDManager   *connIDManager
 	connIDGenerator *connIDGenerator
@@ -221,6 +225,22 @@ func (s *connection) GetTransport() *Transport {
 
 func (s *connection) SetTransport(t *Transport) {
 	s.Transport = t
+}
+
+func (s *connection) ProbePath(t *Transport) {
+	if t == nil {
+		fmt.Println("transport is nil")
+		return
+	}
+
+	if t.conn2 == nil {
+		fmt.Println("transport conn2 has not set")
+		return
+	}
+	s.conn2 = newSendConn(t.conn2, s.conn.RemoteAddr(), packetInfo{}, utils.DefaultLogger)
+	fmt.Printf("conn2 local addr:%s, remote addr:%s\n", s.conn2.LocalAddr().String(), s.RemoteAddr().String())
+	s.sendQueue.SetBackup(s.conn2)
+
 }
 
 var (

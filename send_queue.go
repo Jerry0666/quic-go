@@ -1,6 +1,10 @@
 package quic
 
-import "github.com/quic-go/quic-go/internal/protocol"
+import (
+	"fmt"
+
+	"github.com/quic-go/quic-go/internal/protocol"
+)
 
 type sender interface {
 	Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN)
@@ -8,6 +12,7 @@ type sender interface {
 	WouldBlock() bool
 	Available() <-chan struct{}
 	Close()
+	SetBackup(conn2 sendConn)
 }
 
 type queueEntry struct {
@@ -22,6 +27,14 @@ type sendQueue struct {
 	runStopped  chan struct{} // runStopped when the run loop returns
 	available   chan struct{}
 	conn        sendConn
+	conn2       sendConn
+}
+
+func (h *sendQueue) SetBackup(conn2 sendConn) {
+	if conn2 == nil {
+		fmt.Println("sendConn is nil")
+	}
+	h.conn2 = conn2
 }
 
 var _ sender = &sendQueue{}
@@ -78,15 +91,33 @@ func (h *sendQueue) Run() error {
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
 		case e := <-h.queue:
-			if err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn); err != nil {
-				// This additional check enables:
-				// 1. Checking for "datagram too large" message from the kernel, as such,
-				// 2. Path MTU discovery,and
-				// 3. Eventual detection of loss PingFrame.
-				if !isSendMsgSizeErr(err) {
-					return err
+			// temporarily hardcode, an explicit signal is needed
+			// to specify the use of the second conn
+			if h.conn2 == nil {
+				err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
+				if err != nil {
+					// This additional check enables:
+					// 1. Checking for "datagram too large" message from the kernel, as such,
+					// 2. Path MTU discovery,and
+					// 3. Eventual detection of loss PingFrame.
+					if !isSendMsgSizeErr(err) {
+						return err
+					}
+				}
+			} else {
+				fmt.Println("[test] conn2 is not nil.")
+				err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
+				if err != nil {
+					// This additional check enables:
+					// 1. Checking for "datagram too large" message from the kernel, as such,
+					// 2. Path MTU discovery,and
+					// 3. Eventual detection of loss PingFrame.
+					if !isSendMsgSizeErr(err) {
+						return err
+					}
 				}
 			}
+
 			e.buf.Release()
 			select {
 			case h.available <- struct{}{}:

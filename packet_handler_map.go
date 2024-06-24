@@ -24,7 +24,7 @@ type connCapabilities struct {
 	ECN bool
 }
 
-// rawConn is a connection that allow reading of a receivedPackeh.
+// rawConn is a connection that allow reading of a receivedPacket.
 type rawConn interface {
 	ReadPacket() (receivedPacket, error)
 	// WritePacket writes a packet on the wire.

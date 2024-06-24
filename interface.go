@@ -207,6 +207,10 @@ type Connection interface {
 	// So Add function to set and get it.
 	GetTransport() *Transport
 	SetTransport(*Transport)
+
+	// Set the backup connection, should trigger the Path Validation Procedure,
+	// but now hardcode temporarily, just use the Conn2 in Transport to set.
+	ProbePath(*Transport)
 }
 
 // An EarlyConnection is a connection that is handshaking.

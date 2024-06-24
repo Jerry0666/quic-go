@@ -145,10 +145,8 @@ func (t *Transport) SetBackupConn(ip string, port int) {
 
 	var conn rawConn
 	if c, ok := t.Conn2.(rawConn); ok {
-		fmt.Println("[temp] convert rawConn ok!")
 		conn = c
 	} else {
-		fmt.Println("[temp] convert rawConn not ok!")
 		var err error
 		conn, err = wrapConn(t.Conn2)
 		if err != nil {
@@ -249,10 +247,8 @@ func (t *Transport) init(allowZeroLengthConnIDs bool) error {
 	t.initOnce.Do(func() {
 		var conn rawConn
 		if c, ok := t.Conn.(rawConn); ok {
-			fmt.Println("[temp] convert rawConn ok!")
 			conn = c
 		} else {
-			fmt.Println("[temp] convert rawConn not ok!")
 			var err error
 			conn, err = wrapConn(t.Conn)
 			if err != nil {
@@ -384,12 +380,14 @@ func (t *Transport) close(e error) {
 // only print warnings about the UDP receive buffer size once
 var setBufferWarningOnce sync.Once
 
+// The transport actually reads on rawConn, and then passes the packet to connection.
 func (t *Transport) listen(conn rawConn) {
 	defer close(t.listening)
 	defer getMultiplexer().RemoveConn(t.Conn)
 
 	for {
 		p, err := conn.ReadPacket()
+		fmt.Printf("[tran] Transport ReadPacket: remote addr: %s\n", p.remoteAddr.String())
 		//nolint:staticcheck // SA1019 ignore this!
 		// TODO: This code is used to ignore wsa errors on Windows.
 		// Since net.Error.Temporary is deprecated as of Go 1.18, we should find a better solution.
