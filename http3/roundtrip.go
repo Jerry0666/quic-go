@@ -120,7 +120,8 @@ type RoundTripper struct {
 	StreamManager map[int]*stream
 	StreamWaiter  map[int]chan struct{}
 
-	TempConn quic.EarlyConnection
+	TempConn    quic.Connection
+	DefaultAddr *net.UDPAddr
 }
 
 var (
@@ -143,6 +144,7 @@ func (r *RoundTripper) SetClientRoundTripper(cl roundTripCloser) error {
 
 // RoundTripOpt is like RoundTrip, but takes options.
 func (r *RoundTripper) RoundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Response, error) {
+	fmt.Println("[RoundTripper] RoundTripOpt")
 	if req.URL == nil {
 		closeRequestBody(req)
 		return nil, errors.New("http3: nil Request.URL")
@@ -264,6 +266,14 @@ func (r *RoundTripper) PutReqStream(reqId int, s *stream) {
 	r.StrManMutex.Unlock()
 }
 
+func (r *RoundTripper) GetTransport() *quic.Transport {
+	if r.transport == nil {
+		fmt.Println("[error] transport is nil")
+		return nil
+	}
+	return r.transport
+}
+
 func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTripCloserWithCount, isReused bool, err error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -284,8 +294,23 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		}
 		dial := r.Dial
 		if dial == nil {
+			fmt.Println("[trace] dial == nil")
 			if r.transport == nil {
-				udpConn, err := net.ListenUDP("udp", nil)
+				fmt.Println("[trace] r.transport == nil")
+				var udpConn *net.UDPConn
+				if r.DefaultAddr != nil {
+					fmt.Println("[trace] Default addr != nil, use it to set udp conn.")
+					udpConn, err = net.ListenUDP("udp", r.DefaultAddr)
+					if err != nil {
+						fmt.Printf("listenUDP error:%v\n", err)
+					}
+				} else {
+					udpConn, err = net.ListenUDP("udp", nil)
+					if err != nil {
+						fmt.Printf("listenUDP error:%v\n", err)
+					}
+				}
+
 				if err != nil {
 					return nil, false, err
 				}

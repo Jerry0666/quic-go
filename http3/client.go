@@ -143,8 +143,10 @@ func (c *client) dial(ctx context.Context) error {
 	var err error
 	var conn quic.EarlyConnection
 	if c.dialer != nil {
+		fmt.Println("[trace] c.dialer != nil")
 		conn, err = c.dialer(ctx, c.hostname, c.tlsConf, c.config)
 	} else {
+		fmt.Println("[trace] c.dialer == nil")
 		conn, err = dialAddr(ctx, c.hostname, c.tlsConf, c.config)
 	}
 	if err != nil {
@@ -294,6 +296,7 @@ func (c *client) maxHeaderBytes() uint64 {
 
 // RoundTripOpt executes a request and returns a response
 func (c *client) RoundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Response, error) {
+	fmt.Println("[client] RoundTripOpt")
 	rsp, err := c.roundTripOpt(req, opt)
 	if err != nil && req.Context().Err() != nil {
 		// if the context was canceled, return the context cancellation error
@@ -303,6 +306,7 @@ func (c *client) RoundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Respon
 }
 
 func (c *client) roundTripOpt(req *http.Request, opt RoundTripOpt) (*http.Response, error) {
+	fmt.Println("[http3] client roundTripOpt")
 	if authorityAddr("https", hostnameFromRequest(req)) != c.hostname {
 		return nil, fmt.Errorf("http3 client BUG: RoundTripOpt called for the wrong client (expected %s, got %s)", c.hostname, req.Host)
 	}

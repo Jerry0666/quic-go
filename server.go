@@ -321,6 +321,7 @@ func (s *baseServer) accept(ctx context.Context) (quicConn, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case conn := <-s.connQueue:
+		fmt.Println("[quic] get quic connection")
 		return conn, nil
 	case <-s.errorChan:
 		return nil, s.closeErr

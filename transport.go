@@ -222,7 +222,7 @@ func (t *Transport) Dial(ctx context.Context, addr net.Addr, tlsConf *tls.Config
 
 // DialEarly dials a new connection, attempting to use 0-RTT if possible.
 func (t *Transport) DialEarly(ctx context.Context, addr net.Addr, tlsConf *tls.Config, conf *Config) (EarlyConnection, error) {
-	fmt.Println("DialEarly")
+	fmt.Println("[Transport] DialEarly")
 	return t.dial(ctx, addr, "", tlsConf, conf, true)
 }
 
@@ -382,12 +382,14 @@ var setBufferWarningOnce sync.Once
 
 // The transport actually reads on rawConn, and then passes the packet to connection.
 func (t *Transport) listen(conn rawConn) {
+	fmt.Printf("Transport listen on %s\n", conn.LocalAddr().String())
 	defer close(t.listening)
 	defer getMultiplexer().RemoveConn(t.Conn)
 
 	for {
 		p, err := conn.ReadPacket()
-		fmt.Printf("[tran] Transport ReadPacket: remote addr: %s\n", p.remoteAddr.String())
+		//fmt.Printf("[tran] Transport ReadPacket: remote addr: %s\n", p.remoteAddr.String())
+
 		//nolint:staticcheck // SA1019 ignore this!
 		// TODO: This code is used to ignore wsa errors on Windows.
 		// Since net.Error.Temporary is deprecated as of Go 1.18, we should find a better solution.

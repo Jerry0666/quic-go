@@ -105,7 +105,6 @@ func (h *sendQueue) Run() error {
 					}
 				}
 			} else {
-				fmt.Println("[test] conn2 is not nil.")
 				err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
 				if err != nil {
 					// This additional check enables:

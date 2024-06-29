@@ -1374,12 +1374,12 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 // handlePacket is called by the server with a new packet
 func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
-	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
-		fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
-		fmt.Println("set the conn2!")
-		s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
-		s.sendQueue.SetBackup(s.conn2)
-	}
+	// if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
+	// 	fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
+	// 	fmt.Println("set the conn2!")
+	// 	s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
+	// 	s.sendQueue.SetBackup(s.conn2)
+	// }
 
 	// Discard packets once the amount of queued packets is larger than
 	// the channel size, protocol.MaxConnUnprocessedPackets
