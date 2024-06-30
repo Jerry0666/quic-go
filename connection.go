@@ -1351,7 +1351,8 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		err = s.handleStopSendingFrame(frame)
 	case *wire.PingFrame:
 	case *wire.PathChallengeFrame:
-		s.handlePathChallengeFrame(frame)
+		fmt.Println("receive PathChallenge.")
+		// s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
 		// since we don't send PATH_CHALLENGEs, we don't expect PATH_RESPONSEs
 		err = errors.New("unexpected PATH_RESPONSE frame")
@@ -1367,6 +1368,9 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		err = s.handleDatagramFrame(frame)
 	default:
 		err = fmt.Errorf("unexpected frame type: %s", reflect.ValueOf(&frame).Elem().Type().Name())
+	}
+	if err != nil {
+		fmt.Printf("err is not nil:%v\n", err)
 	}
 	return err
 }
@@ -1950,6 +1954,22 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 			return nil
 		}
 	}
+}
+
+func (s *connection) SendPathChallenge() error {
+	fmt.Println("SendPathChallenge!!!")
+	buf := getLargePacketBuffer()
+	maxSize := s.mtuDiscoverer.CurrentSize()
+	p, err := s.packer.PackPathChallenge(buf, maxSize, s.version)
+	if err != nil {
+		fmt.Printf("err happen:%v\n", err)
+	}
+	ecn := s.sentPacketHandler.ECNMode(true)
+	now := time.Now()
+	s.registerPackedShortHeaderPacket(p, ecn, now)
+	s.sendQueue.Send(buf, uint16(maxSize), ecn)
+
+	return err
 }
 
 func (s *connection) sendPacketsWithGSO(now time.Time) error {

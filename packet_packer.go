@@ -27,6 +27,8 @@ type packer interface {
 	PackMTUProbePacket(ping ackhandler.Frame, size protocol.ByteCount, v protocol.Version) (shortHeaderPacket, *packetBuffer, error)
 
 	SetToken([]byte)
+
+	PackPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version) (shortHeaderPacket, error)
 }
 
 type sealer interface {
@@ -469,6 +471,31 @@ func (p *packetPacker) appendPacket(buf *packetBuffer, onlyAck bool, maxPacketSi
 	kp := sealer.KeyPhase()
 
 	return p.appendShortHeaderPacket(buf, connID, pn, pnLen, kp, pl, 0, maxPacketSize, sealer, false, v)
+}
+
+func (p *packetPacker) PackPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version) (shortHeaderPacket, error) {
+	return p.appendPathChallenge(buf, false, maxPacketSize, v)
+}
+
+func (p *packetPacker) appendPathChallenge(buf *packetBuffer, onlyAck bool, maxPacketSize protocol.ByteCount, v protocol.Version) (shortHeaderPacket, error) {
+	sealer, err := p.cryptoSetup.Get1RTTSealer()
+	if err != nil {
+		return shortHeaderPacket{}, err
+	}
+	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
+	connID := p.getDestConnID()
+	// hdrLen := wire.ShortHeaderLen(connID, pnLen)
+	var pl payload
+	p_ch := &wire.PathChallengeFrame{Data: [8]byte{1, 1, 1, 1, 2, 2, 2, 2}}
+	frame := ackhandler.Frame{Frame: p_ch}
+	pl.frames = append(pl.frames, frame)
+	pl.length = frame.Frame.Length(v)
+	kp := sealer.KeyPhase()
+	s, err := p.appendShortHeaderPacket(buf, connID, pn, pnLen, kp, pl, 0, maxPacketSize, sealer, false, v)
+	if err != nil {
+		fmt.Printf("err happen:%v\n", err)
+	}
+	return s, err
 }
 
 func (p *packetPacker) maybeGetCryptoPacket(maxPacketSize protocol.ByteCount, encLevel protocol.EncryptionLevel, onlyAck, ackAllowed bool, v protocol.Version) (*wire.ExtendedHeader, payload) {

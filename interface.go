@@ -230,6 +230,8 @@ type MPConnection interface {
 	// Set the backup connection, should trigger the Path Validation Procedure,
 	// but now hardcode temporarily, just use the Conn2 in Transport to set.
 	ProbePath(*Transport)
+
+	SendPathChallenge() error
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.
