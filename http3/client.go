@@ -37,8 +37,6 @@ var defaultQuicConfig = &quic.Config{
 
 type dialFunc func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error)
 
-type dialQconnFunc func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.Connection, error)
-
 var dialAddr dialFunc = quic.DialAddrEarly
 
 type roundTripperOpts struct {
@@ -58,7 +56,6 @@ type client struct {
 
 	dialOnce     sync.Once
 	dialer       dialFunc
-	dialerQ      dialQconnFunc
 	handshakeErr error
 
 	receivedSettings chan struct{} // closed once the server's SETTINGS frame was processed
@@ -78,16 +75,6 @@ type client struct {
 }
 
 var _ roundTripCloser = &client{}
-
-func getRawClient(r roundTripCloser) *client {
-	c, ok := r.(*client)
-	if !ok {
-		fmt.Println("convert to http3 client struct err")
-		return nil
-	} else {
-		return c
-	}
-}
 
 func newClient(hostname string, tlsConf *tls.Config, opts *roundTripperOpts, conf *quic.Config, dialer dialFunc) (roundTripCloser, error) {
 	if conf == nil {
@@ -135,10 +122,6 @@ func newClient(hostname string, tlsConf *tls.Config, opts *roundTripperOpts, con
 	}, nil
 }
 
-func (c *client) SetDialQ(d dialQconnFunc) {
-	c.dialerQ = d
-}
-
 func (c *client) dial(ctx context.Context) error {
 	var err error
 	var conn quic.EarlyConnection
@@ -155,7 +138,12 @@ func (c *client) dial(ctx context.Context) error {
 	c.conn.Store(&conn)
 
 	c.dconn = &connection{Connection: *c.conn.Load(), logger: c.logger}
-	c.rt.TempConn = conn
+	mpConn, ok := conn.(quic.MPConnection)
+	if !ok {
+		fmt.Println("conn is not quic.MPConnection.")
+	} else {
+		c.rt.TempConn = mpConn
+	}
 
 	// send the SETTINGs frame, using 0-RTT data, if possible
 	go func() {

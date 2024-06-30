@@ -202,15 +202,6 @@ type Connection interface {
 	SendDatagram(payload []byte) error
 	// ReceiveDatagram gets a message received in a datagram, as specified in RFC 9221.
 	ReceiveDatagram(context.Context) ([]byte, error)
-
-	// Because Transport is the central point to manage incoming and outgoing QUIC connections.
-	// So Add function to set and get it.
-	GetTransport() *Transport
-	SetTransport(*Transport)
-
-	// Set the backup connection, should trigger the Path Validation Procedure,
-	// but now hardcode temporarily, just use the Conn2 in Transport to set.
-	ProbePath(*Transport)
 }
 
 // An EarlyConnection is a connection that is handshaking.
@@ -227,6 +218,18 @@ type EarlyConnection interface {
 	HandshakeComplete() <-chan struct{}
 
 	NextConnection() Connection
+}
+
+type MPConnection interface {
+	Connection
+	// Because Transport is the central point to manage incoming and outgoing QUIC connections.
+	// So Add function to set and get it.
+	GetTransport() *Transport
+	SetTransport(*Transport)
+
+	// Set the backup connection, should trigger the Path Validation Procedure,
+	// but now hardcode temporarily, just use the Conn2 in Transport to set.
+	ProbePath(*Transport)
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

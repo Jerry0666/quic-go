@@ -67,7 +67,12 @@ func DialAddrFix(ctx context.Context, addr string, tlsConf *tls.Config, conf *Co
 	if err != nil {
 		return nil, err
 	}
-	c.SetTransport(tr)
+	mpConn, ok := c.(MPConnection)
+	if !ok {
+		fmt.Println("convert to mpConn error.")
+	} else {
+		mpConn.SetTransport(tr)
+	}
 	return c, nil
 }
 
@@ -93,7 +98,12 @@ func DialAddr(ctx context.Context, addr string, tlsConf *tls.Config, conf *Confi
 	if err != nil {
 		return nil, err
 	}
-	c.SetTransport(tr)
+	mpConn, ok := c.(MPConnection)
+	if !ok {
+		fmt.Println("convert to mpConn error.")
+	} else {
+		mpConn.SetTransport(tr)
+	}
 	return c, nil
 }
 

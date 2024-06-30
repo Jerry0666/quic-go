@@ -120,7 +120,7 @@ type RoundTripper struct {
 	StreamManager map[int]*stream
 	StreamWaiter  map[int]chan struct{}
 
-	TempConn    quic.Connection
+	TempConn    quic.MPConnection
 	DefaultAddr *net.UDPAddr
 }
 
@@ -335,9 +335,6 @@ func (r *RoundTripper) getClient(hostname string, onlyCached bool) (rtc *roundTr
 		if err != nil {
 			return nil, false, err
 		}
-		//test
-		testC := getRawClient(c)
-		testC.SetDialQ(r.makeDialerQ())
 		client = &roundTripCloserWithCount{roundTripCloser: c}
 		r.clients[hostname] = client
 	} else if client.HandshakeComplete() {
