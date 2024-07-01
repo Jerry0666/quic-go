@@ -155,6 +155,7 @@ func (t *Transport) SetBackupConn(ip string, port int) {
 		}
 	}
 	t.conn2 = conn
+	go t.listen(t.conn2)
 }
 
 // Listen starts listening for incoming QUIC connections.
@@ -385,6 +386,7 @@ func (t *Transport) listen(conn rawConn) {
 	fmt.Printf("Transport listen on %s\n", conn.LocalAddr().String())
 	defer close(t.listening)
 	defer getMultiplexer().RemoveConn(t.Conn)
+	defer fmt.Println("listen close!!")
 
 	for {
 		p, err := conn.ReadPacket()

@@ -232,6 +232,7 @@ type MPConnection interface {
 	ProbePath(*Transport)
 
 	SendPathChallenge() error
+	SendPathResponse([]byte) error
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

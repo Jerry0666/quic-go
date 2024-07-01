@@ -73,6 +73,8 @@ type receivedPacket struct {
 	ecn protocol.ECN
 
 	info packetInfo // only valid if the contained IP address is valid
+	//Is from another IP addr?
+	otherIP bool
 }
 
 func (p *receivedPacket) Size() protocol.ByteCount { return protocol.ByteCount(len(p.data)) }
@@ -950,7 +952,8 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 			)
 		}
 	}
-	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log); err != nil {
+	fromOtherIP := p.otherIP
+	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
 		return false
 	}
@@ -1235,7 +1238,7 @@ func (s *connection) handleUnpackedLongHeaderPacket(
 			s.tracer.ReceivedLongHeaderPacket(packet.hdr, packetSize, ecn, frames)
 		}
 	}
-	isAckEliciting, err := s.handleFrames(packet.data, packet.hdr.DestConnectionID, packet.encryptionLevel, log)
+	isAckEliciting, err := s.handleFrames(packet.data, packet.hdr.DestConnectionID, packet.encryptionLevel, log, false)
 	if err != nil {
 		return err
 	}
@@ -1249,12 +1252,13 @@ func (s *connection) handleUnpackedShortHeaderPacket(
 	ecn protocol.ECN,
 	rcvTime time.Time,
 	log func([]logging.Frame),
+	otherIP bool,
 ) error {
 	s.lastPacketReceivedTime = rcvTime
 	s.firstAckElicitingPacketAfterIdleSentTime = time.Time{}
 	s.keepAlivePingSent = false
 
-	isAckEliciting, err := s.handleFrames(data, destConnID, protocol.Encryption1RTT, log)
+	isAckEliciting, err := s.handleFrames(data, destConnID, protocol.Encryption1RTT, log, otherIP)
 	if err != nil {
 		return err
 	}
@@ -1266,7 +1270,12 @@ func (s *connection) handleFrames(
 	destConnID protocol.ConnectionID,
 	encLevel protocol.EncryptionLevel,
 	log func([]logging.Frame),
+	otherIP bool,
 ) (isAckEliciting bool, _ error) {
+	if otherIP {
+		fmt.Println("[handleFrames] it is from other IP.")
+	}
+
 	// Only used for tracing.
 	// If we're not tracing, this slice will always remain empty.
 	var frames []logging.Frame
@@ -1352,10 +1361,10 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 	case *wire.PingFrame:
 	case *wire.PathChallengeFrame:
 		fmt.Println("receive PathChallenge.")
-		// s.handlePathChallengeFrame(frame)
+		s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
+		fmt.Println("receive PathRedponseFrame")
 		// since we don't send PATH_CHALLENGEs, we don't expect PATH_RESPONSEs
-		err = errors.New("unexpected PATH_RESPONSE frame")
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
@@ -1378,12 +1387,16 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 // handlePacket is called by the server with a new packet
 func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
-	// if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
-	// 	fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
-	// 	fmt.Println("set the conn2!")
-	// 	s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
-	// 	s.sendQueue.SetBackup(s.conn2)
-	// }
+	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
+		fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
+		fmt.Println("set the conn2!")
+		s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
+		s.sendQueue.SetBackup(s.conn2)
+	}
+
+	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
+		p.otherIP = true
+	}
 
 	// Discard packets once the amount of queued packets is larger than
 	// the channel size, protocol.MaxConnUnprocessedPackets
@@ -1513,7 +1526,7 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
-	s.queueControlFrame(&wire.PathResponseFrame{Data: frame.Data})
+	s.SendPathResponse(frame.Data[:])
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
@@ -1967,7 +1980,26 @@ func (s *connection) SendPathChallenge() error {
 	ecn := s.sentPacketHandler.ECNMode(true)
 	now := time.Now()
 	s.registerPackedShortHeaderPacket(p, ecn, now)
-	s.sendQueue.Send(buf, uint16(maxSize), ecn)
+	s.sendQueue.Send2(buf, uint16(maxSize), ecn)
+
+	return err
+}
+
+func (s *connection) SendPathResponse(b []byte) error {
+	fmt.Println("SendPathResponse!!!")
+	buf := getLargePacketBuffer()
+	maxSize := s.mtuDiscoverer.CurrentSize()
+	p, err := s.packer.PackPathResponse(buf, maxSize, s.version, b)
+	if err != nil {
+		fmt.Printf("err happen:%v\n", err)
+	}
+	ecn := s.sentPacketHandler.ECNMode(true)
+	now := time.Now()
+	s.registerPackedShortHeaderPacket(p, ecn, now)
+	if s.conn2 == nil {
+		fmt.Println("conn2 has not set yet.")
+	}
+	s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 
 	return err
 }

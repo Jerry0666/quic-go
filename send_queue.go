@@ -8,6 +8,7 @@ import (
 
 type sender interface {
 	Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN)
+	Send2(p *packetBuffer, gsoSize uint16, ecn protocol.ECN)
 	Run() error
 	WouldBlock() bool
 	Available() <-chan struct{}
@@ -23,6 +24,7 @@ type queueEntry struct {
 
 type sendQueue struct {
 	queue       chan queueEntry
+	queue2      chan queueEntry
 	closeCalled chan struct{} // runStopped when Close() is called
 	runStopped  chan struct{} // runStopped when the run loop returns
 	available   chan struct{}
@@ -48,6 +50,7 @@ func newSendQueue(conn sendConn) sender {
 		closeCalled: make(chan struct{}),
 		available:   make(chan struct{}, 1),
 		queue:       make(chan queueEntry, sendQueueCapacity),
+		queue2:      make(chan queueEntry, sendQueueCapacity),
 	}
 }
 
@@ -63,6 +66,20 @@ func (h *sendQueue) Send(p *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
 			case <-h.available:
 			default:
 			}
+		}
+	case <-h.runStopped:
+	default:
+		panic("sendQueue.Send would have blocked")
+	}
+}
+
+// Push into queue2
+func (h *sendQueue) Send2(p *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
+	select {
+	case h.queue2 <- queueEntry{buf: p, gsoSize: gsoSize, ecn: ecn}:
+		// clear available channel if we've reached capacity
+		if len(h.queue2) == sendQueueCapacity {
+			fmt.Println("queue2 is full!")
 		}
 	case <-h.runStopped:
 	default:
@@ -91,32 +108,35 @@ func (h *sendQueue) Run() error {
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
 		case e := <-h.queue:
-			// temporarily hardcode, an explicit signal is needed
-			// to specify the use of the second conn
-			if h.conn2 == nil {
-				err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
-				if err != nil {
-					// This additional check enables:
-					// 1. Checking for "datagram too large" message from the kernel, as such,
-					// 2. Path MTU discovery,and
-					// 3. Eventual detection of loss PingFrame.
-					if !isSendMsgSizeErr(err) {
-						return err
-					}
-				}
-			} else {
-				err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
-				if err != nil {
-					// This additional check enables:
-					// 1. Checking for "datagram too large" message from the kernel, as such,
-					// 2. Path MTU discovery,and
-					// 3. Eventual detection of loss PingFrame.
-					if !isSendMsgSizeErr(err) {
-						return err
-					}
+			err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
+			if err != nil {
+				// This additional check enables:
+				// 1. Checking for "datagram too large" message from the kernel, as such,
+				// 2. Path MTU discovery,and
+				// 3. Eventual detection of loss PingFrame.
+				if !isSendMsgSizeErr(err) {
+					return err
 				}
 			}
 
+			e.buf.Release()
+			select {
+			case h.available <- struct{}{}:
+			default:
+			}
+		case e := <-h.queue2:
+			fmt.Println("receive from queue2!")
+			// temporarily hardcode, an explicit signal is needed
+			// to specify the use of the second conn
+			if h.conn2 == nil {
+				fmt.Println("sendQueue conn2 is nil.")
+			}
+			err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
+			if err != nil {
+				if !isSendMsgSizeErr(err) {
+					return err
+				}
+			}
 			e.buf.Release()
 			select {
 			case h.available <- struct{}{}:
