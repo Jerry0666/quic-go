@@ -233,6 +233,9 @@ type MPConnection interface {
 
 	SendPathChallenge() error
 	SendPathResponse([]byte) error
+
+	// If conn2 is already set, migration to conn2.
+	Migration() error
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

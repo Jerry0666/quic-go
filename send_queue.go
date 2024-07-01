@@ -14,6 +14,7 @@ type sender interface {
 	Available() <-chan struct{}
 	Close()
 	SetBackup(conn2 sendConn)
+	Migration()
 }
 
 type queueEntry struct {
@@ -28,6 +29,7 @@ type sendQueue struct {
 	closeCalled chan struct{} // runStopped when Close() is called
 	runStopped  chan struct{} // runStopped when the run loop returns
 	available   chan struct{}
+	migration   chan struct{} // Used to transmit migration signals
 	conn        sendConn
 	conn2       sendConn
 }
@@ -37,6 +39,14 @@ func (h *sendQueue) SetBackup(conn2 sendConn) {
 		fmt.Println("sendConn is nil")
 	}
 	h.conn2 = conn2
+}
+
+func (h *sendQueue) Migration() {
+	if h.conn2 == nil {
+		fmt.Println("migration error, conn2 has not been set.")
+		return
+	}
+	h.migration <- struct{}{}
 }
 
 var _ sender = &sendQueue{}
@@ -49,6 +59,7 @@ func newSendQueue(conn sendConn) sender {
 		runStopped:  make(chan struct{}),
 		closeCalled: make(chan struct{}),
 		available:   make(chan struct{}, 1),
+		migration:   make(chan struct{}),
 		queue:       make(chan queueEntry, sendQueueCapacity),
 		queue2:      make(chan queueEntry, sendQueueCapacity),
 	}
@@ -98,27 +109,43 @@ func (h *sendQueue) Available() <-chan struct{} {
 func (h *sendQueue) Run() error {
 	defer close(h.runStopped)
 	var shouldClose bool
+	AlreadyMigrated := false
 	for {
 		if shouldClose && len(h.queue) == 0 {
 			return nil
 		}
 		select {
+		case <-h.migration:
+			fmt.Println("Receive migration signal, migrate to conn2.")
+			AlreadyMigrated = true
 		case <-h.closeCalled:
 			h.closeCalled = nil // prevent this case from being selected again
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
 		case e := <-h.queue:
-			err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
-			if err != nil {
-				// This additional check enables:
-				// 1. Checking for "datagram too large" message from the kernel, as such,
-				// 2. Path MTU discovery,and
-				// 3. Eventual detection of loss PingFrame.
-				if !isSendMsgSizeErr(err) {
-					return err
+			if AlreadyMigrated {
+				err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
+				if err != nil {
+					// This additional check enables:
+					// 1. Checking for "datagram too large" message from the kernel, as such,
+					// 2. Path MTU discovery,and
+					// 3. Eventual detection of loss PingFrame.
+					if !isSendMsgSizeErr(err) {
+						return err
+					}
+				}
+			} else {
+				err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
+				if err != nil {
+					// This additional check enables:
+					// 1. Checking for "datagram too large" message from the kernel, as such,
+					// 2. Path MTU discovery,and
+					// 3. Eventual detection of loss PingFrame.
+					if !isSendMsgSizeErr(err) {
+						return err
+					}
 				}
 			}
-
 			e.buf.Release()
 			select {
 			case h.available <- struct{}{}:

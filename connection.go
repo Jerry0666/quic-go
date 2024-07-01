@@ -219,6 +219,8 @@ type connection struct {
 	logger utils.Logger
 
 	*Transport
+	// Indicate weather the conn has been migration.
+	migrated bool
 }
 
 func (s *connection) GetTransport() *Transport {
@@ -1272,9 +1274,6 @@ func (s *connection) handleFrames(
 	log func([]logging.Frame),
 	otherIP bool,
 ) (isAckEliciting bool, _ error) {
-	if otherIP {
-		fmt.Println("[handleFrames] it is from other IP.")
-	}
 
 	// Only used for tracing.
 	// If we're not tracing, this slice will always remain empty.
@@ -1286,6 +1285,15 @@ func (s *connection) handleFrames(
 	var handleErr error
 	for len(data) > 0 {
 		l, frame, err := s.frameParser.ParseNext(data, encLevel, s.version)
+		// check the frame
+		if otherIP && !s.migrated {
+			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
+			if !IsProbingFrame(frame) {
+				fmt.Println("do the migration.")
+				s.migrated = true
+				s.Migration()
+			}
+		}
 		if err != nil {
 			return false, err
 		}
@@ -1331,6 +1339,23 @@ func (s *connection) handleFrames(
 	}
 
 	return
+}
+
+func IsProbingFrame(f wire.Frame) bool {
+	IsProbe := false
+	switch f.(type) {
+	case *wire.PathChallengeFrame:
+		IsProbe = true
+	case *wire.PathResponseFrame:
+		IsProbe = true
+	case *wire.NewConnectionIDFrame:
+		IsProbe = true
+	default:
+	}
+	if !IsProbe {
+		fmt.Println("find a non-Probing frame!")
+	}
+	return IsProbe
 }
 
 func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel, destConnID protocol.ConnectionID) error {
@@ -2002,6 +2027,11 @@ func (s *connection) SendPathResponse(b []byte) error {
 	s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 
 	return err
+}
+
+func (s *connection) Migration() error {
+	s.sendQueue.Migration()
+	return nil
 }
 
 func (s *connection) sendPacketsWithGSO(now time.Time) error {
