@@ -1291,7 +1291,7 @@ func (s *connection) handleFrames(
 			if !IsProbingFrame(frame) {
 				fmt.Println("do the migration.")
 				s.migrated = true
-				s.Migration()
+				s.Migration(nil)
 			}
 		}
 		if err != nil {
@@ -1994,7 +1994,7 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 	}
 }
 
-func (s *connection) SendPathChallenge() error {
+func (s *connection) SendPathChallenge(pa *Path) error {
 	fmt.Println("SendPathChallenge!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
@@ -2005,7 +2005,12 @@ func (s *connection) SendPathChallenge() error {
 	ecn := s.sentPacketHandler.ECNMode(true)
 	now := time.Now()
 	s.registerPackedShortHeaderPacket(p, ecn, now)
-	s.sendQueue.Send2(buf, uint16(maxSize), ecn)
+	if pa != nil {
+		fmt.Println("Use Path to send!!!")
+		pa.Send(buf, uint16(maxSize), ecn)
+	} else {
+		s.sendQueue.Send2(buf, uint16(maxSize), ecn)
+	}
 
 	return err
 }
@@ -2029,8 +2034,14 @@ func (s *connection) SendPathResponse(b []byte) error {
 	return err
 }
 
-func (s *connection) Migration() error {
-	s.sendQueue.Migration()
+// Use Path to migrate
+func (s *connection) Migration(p *Path) error {
+	if p != nil {
+		s.sendQueue.Migration(p.SendConn)
+	} else {
+		s.sendQueue.Migration(nil)
+	}
+
 	return nil
 }
 

@@ -231,11 +231,11 @@ type MPConnection interface {
 	// but now hardcode temporarily, just use the Conn2 in Transport to set.
 	ProbePath(*Transport)
 
-	SendPathChallenge() error
+	SendPathChallenge(*Path) error
 	SendPathResponse([]byte) error
 
 	// If conn2 is already set, migration to conn2.
-	Migration() error
+	Migration(*Path) error
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

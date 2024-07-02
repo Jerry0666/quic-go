@@ -14,7 +14,7 @@ type sender interface {
 	Available() <-chan struct{}
 	Close()
 	SetBackup(conn2 sendConn)
-	Migration()
+	Migration(conn sendConn)
 }
 
 type queueEntry struct {
@@ -24,14 +24,15 @@ type queueEntry struct {
 }
 
 type sendQueue struct {
-	queue       chan queueEntry
-	queue2      chan queueEntry
-	closeCalled chan struct{} // runStopped when Close() is called
-	runStopped  chan struct{} // runStopped when the run loop returns
-	available   chan struct{}
-	migration   chan struct{} // Used to transmit migration signals
-	conn        sendConn
-	conn2       sendConn
+	queue         chan queueEntry
+	queue2        chan queueEntry
+	closeCalled   chan struct{} // runStopped when Close() is called
+	runStopped    chan struct{} // runStopped when the run loop returns
+	available     chan struct{}
+	migration     chan struct{} // Used to transmit migration signals
+	migrationConn chan sendConn // Used to transmit migration conn
+	conn          sendConn
+	conn2         sendConn
 }
 
 func (h *sendQueue) SetBackup(conn2 sendConn) {
@@ -41,12 +42,9 @@ func (h *sendQueue) SetBackup(conn2 sendConn) {
 	h.conn2 = conn2
 }
 
-func (h *sendQueue) Migration() {
-	if h.conn2 == nil {
-		fmt.Println("migration error, conn2 has not been set.")
-		return
-	}
+func (h *sendQueue) Migration(conn sendConn) {
 	h.migration <- struct{}{}
+	h.migrationConn <- conn
 }
 
 var _ sender = &sendQueue{}
@@ -55,13 +53,14 @@ const sendQueueCapacity = 8
 
 func newSendQueue(conn sendConn) sender {
 	return &sendQueue{
-		conn:        conn,
-		runStopped:  make(chan struct{}),
-		closeCalled: make(chan struct{}),
-		available:   make(chan struct{}, 1),
-		migration:   make(chan struct{}),
-		queue:       make(chan queueEntry, sendQueueCapacity),
-		queue2:      make(chan queueEntry, sendQueueCapacity),
+		conn:          conn,
+		runStopped:    make(chan struct{}),
+		closeCalled:   make(chan struct{}),
+		available:     make(chan struct{}, 1),
+		migration:     make(chan struct{}),
+		migrationConn: make(chan sendConn),
+		queue:         make(chan queueEntry, sendQueueCapacity),
+		queue2:        make(chan queueEntry, sendQueueCapacity),
 	}
 }
 
@@ -116,8 +115,15 @@ func (h *sendQueue) Run() error {
 		}
 		select {
 		case <-h.migration:
-			fmt.Println("Receive migration signal, migrate to conn2.")
-			AlreadyMigrated = true
+			conn := <-h.migrationConn
+			if conn == nil {
+				fmt.Println("[sendQueue] receive the migration signal at the server side.")
+				AlreadyMigrated = true
+			} else {
+				fmt.Println("[sendQueue] receive the migration signal, and conn is not nil.")
+				h.conn = conn
+			}
+
 		case <-h.closeCalled:
 			h.closeCalled = nil // prevent this case from being selected again
 			// make sure that all queued packets are actually sent out
