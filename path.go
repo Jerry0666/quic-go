@@ -40,6 +40,9 @@ type Path struct {
 
 	Remote net.Addr
 
+	// This Path is for the client or server
+	perspective protocol.Perspective
+
 	// conn
 	udpConn *net.UDPConn
 	// for the listen
@@ -48,17 +51,33 @@ type Path struct {
 	SendConn sendConn
 }
 
-func NewPath(T *Transport, remoteAddr net.Addr) *Path {
+func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
+	var per protocol.Perspective
+	if Isclient {
+		per = protocol.PerspectiveClient
+	} else {
+		per = protocol.PerspectiveServer
+	}
 
 	p := &Path{
-		queue:  make(chan queueEntry, sendQueueCapacity),
-		Tr:     T,
-		Remote: remoteAddr,
+		queue:       make(chan queueEntry, sendQueueCapacity),
+		Tr:          T,
+		Remote:      remoteAddr,
+		perspective: per,
 	}
 	return p
 
 }
 
+func (p *Path) ServerSet(r rawConn, packet receivedPacket) {
+	fmt.Println("[Path] server set the Path")
+	p.SendConn = newSendConn(r, packet.remoteAddr, packet.info, utils.DefaultLogger)
+	p.Rconn = r
+	fmt.Println("[Path] run the server path")
+	go p.Run()
+}
+
+// use in the client side
 func (p *Path) SetIP(ip string, port int) {
 	fmt.Println("[Path] Setting IP")
 	localIP := net.ParseIP(ip)
@@ -81,7 +100,9 @@ func (p *Path) SetIP(ip string, port int) {
 	p.Rconn = conn
 	// listen on it
 	if p.Tr == nil {
-		fmt.Println("[Path] err: Transport is nil, can't use Transport listen.")
+		if p.perspective == protocol.PerspectiveClient {
+			fmt.Println("[Path] err: Transport is nil, can't use Transport listen.")
+		}
 	} else {
 		fmt.Println("[Path] listen on new rawConn")
 		go p.Tr.listen(p.Rconn)

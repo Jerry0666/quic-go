@@ -221,6 +221,11 @@ type connection struct {
 	*Transport
 	// Indicate weather the conn has been migration.
 	migrated bool
+
+	// transform remote addr of this packet
+	remoteAddr chan string
+	// Use a map to store all Path
+	pathMap map[string]*Path
 }
 
 func (s *connection) GetTransport() *Transport {
@@ -272,6 +277,7 @@ var newConnection = func(
 	logger utils.Logger,
 	v protocol.Version,
 ) quicConn {
+	fmt.Println("[server] create the quicConn")
 	s := &connection{
 		conn:                conn,
 		config:              conf,
@@ -283,6 +289,7 @@ var newConnection = func(
 		tracer:              tracer,
 		logger:              logger,
 		version:             v,
+		pathMap:             make(map[string]*Path),
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -524,6 +531,12 @@ func (s *connection) preSetup() {
 	s.windowUpdateQueue = newWindowUpdateQueue(s.streamsMap, s.connFlowController, s.framer.QueueControlFrame)
 	s.datagramQueue = newDatagramQueue(s.scheduleSending, s.logger)
 	s.connState.Version = s.version
+
+	// make the remoteAddr chan for the server
+	if s.perspective == protocol.PerspectiveServer {
+		fmt.Println("[server] make remoteAddr chan")
+		s.remoteAddr = make(chan string)
+	}
 }
 
 // run the connection main loop
@@ -955,6 +968,11 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 		}
 	}
 	fromOtherIP := p.otherIP
+	if fromOtherIP {
+		go func() {
+			s.remoteAddr <- p.remoteAddr.String()
+		}()
+	}
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
 		return false
@@ -1288,8 +1306,16 @@ func (s *connection) handleFrames(
 		// check the frame
 		if otherIP && !s.migrated {
 			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
+			remoteAddr := <-s.remoteAddr
 			if !IsProbingFrame(frame) {
 				fmt.Println("do the migration.")
+				fmt.Printf("[server] remote IP:%s\n", remoteAddr)
+				path, ok := s.pathMap[remoteAddr]
+				if !ok {
+					fmt.Println("can't get the path")
+				} else if path != nil {
+					fmt.Println("[server] get the path!")
+				}
 				s.migrated = true
 				s.Migration(nil)
 			}
@@ -1413,8 +1439,12 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
+		// modify to use Path structure
 		fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
-		fmt.Println("set the conn2!")
+		fmt.Println("[server] create a new path and set the pathMap")
+		path := NewPath(nil, p.remoteAddr, false)
+		path.ServerSet(s.conn.GetRawConn(), p)
+		s.pathMap[p.remoteAddr.String()] = path
 		s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
 		s.sendQueue.SetBackup(s.conn2)
 	}
@@ -1551,6 +1581,8 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
+	// Create the path, maybe after Pathvalidation at server side?
+
 	s.SendPathResponse(frame.Data[:])
 }
 

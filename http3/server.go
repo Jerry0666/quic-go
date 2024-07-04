@@ -224,8 +224,7 @@ type Server struct {
 
 	altSvcHeader string
 
-	logger   utils.Logger
-	TempConn quic.EarlyConnection
+	logger utils.Logger
 }
 
 // ListenAndServe listens on the UDP address s.Addr and calls s.Handler to handle HTTP/3 requests on incoming connections.
@@ -288,7 +287,6 @@ func (s *Server) ServeListener(ln QUICEarlyListener) error {
 		if err != nil {
 			return err
 		}
-		s.TempConn = conn
 
 		//modify here
 		go func() {
@@ -325,6 +323,7 @@ func (s *Server) serveConn(tlsConf *tls.Config, conn net.PacketConn) error {
 	}
 
 	var ln QUICEarlyListener
+	fmt.Println("[server] use QUICEarlyListener")
 	var err error
 	if conn == nil {
 		addr := s.Addr
