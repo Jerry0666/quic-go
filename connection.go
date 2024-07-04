@@ -236,22 +236,6 @@ func (s *connection) SetTransport(t *Transport) {
 	s.Transport = t
 }
 
-func (s *connection) ProbePath(t *Transport) {
-	if t == nil {
-		fmt.Println("transport is nil")
-		return
-	}
-
-	if t.conn2 == nil {
-		fmt.Println("transport conn2 has not set")
-		return
-	}
-	s.conn2 = newSendConn(t.conn2, s.conn.RemoteAddr(), packetInfo{}, utils.DefaultLogger)
-	fmt.Printf("conn2 local addr:%s, remote addr:%s\n", s.conn2.LocalAddr().String(), s.RemoteAddr().String())
-	s.sendQueue.SetBackup(s.conn2)
-
-}
-
 var (
 	_ Connection      = &connection{}
 	_ EarlyConnection = &connection{}
@@ -970,6 +954,7 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 	fromOtherIP := p.otherIP
 	if fromOtherIP {
 		go func() {
+			fmt.Println("[connection] s.remoteAddr <- p.remoteAddr.String()")
 			s.remoteAddr <- p.remoteAddr.String()
 		}()
 	}
@@ -1306,9 +1291,11 @@ func (s *connection) handleFrames(
 		// check the frame
 		if otherIP && !s.migrated {
 			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
-			remoteAddr := <-s.remoteAddr
+
 			if !IsProbingFrame(frame) {
 				fmt.Println("do the migration.")
+				remoteAddr := <-s.remoteAddr
+				fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
 				fmt.Printf("[server] remote IP:%s\n", remoteAddr)
 				path, ok := s.pathMap[remoteAddr]
 				if !ok {
@@ -1317,7 +1304,7 @@ func (s *connection) handleFrames(
 					fmt.Println("[server] get the path!")
 				}
 				s.migrated = true
-				s.Migration(nil)
+				s.Migration(path)
 			}
 		}
 		if err != nil {
@@ -1445,8 +1432,6 @@ func (s *connection) handlePacket(p receivedPacket) {
 		path := NewPath(nil, p.remoteAddr, false)
 		path.ServerSet(s.conn.GetRawConn(), p)
 		s.pathMap[p.remoteAddr.String()] = path
-		s.conn2 = newSendConn(s.conn.GetRawConn(), p.remoteAddr, p.info, s.logger)
-		s.sendQueue.SetBackup(s.conn2)
 	}
 
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
@@ -1581,9 +1566,17 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
-	// Create the path, maybe after Pathvalidation at server side?
+	remoteAddr := <-s.remoteAddr
+	fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
+	fmt.Println("find Path")
+	path, ok := s.pathMap[remoteAddr]
+	if !ok {
+		fmt.Println("[error] can't find path")
+	} else {
+		fmt.Println("find path successfully")
+	}
 
-	s.SendPathResponse(frame.Data[:])
+	s.SendPathResponse(frame.Data[:], path)
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
@@ -2026,7 +2019,7 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 	}
 }
 
-func (s *connection) SendPathChallenge(pa *Path) error {
+func (s *connection) SendPathChallenge(path *Path) error {
 	fmt.Println("SendPathChallenge!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
@@ -2037,9 +2030,9 @@ func (s *connection) SendPathChallenge(pa *Path) error {
 	ecn := s.sentPacketHandler.ECNMode(true)
 	now := time.Now()
 	s.registerPackedShortHeaderPacket(p, ecn, now)
-	if pa != nil {
+	if path != nil {
 		fmt.Println("Use Path to send!!!")
-		pa.Send(buf, uint16(maxSize), ecn)
+		path.Send(buf, uint16(maxSize), ecn)
 	} else {
 		s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 	}
@@ -2047,7 +2040,7 @@ func (s *connection) SendPathChallenge(pa *Path) error {
 	return err
 }
 
-func (s *connection) SendPathResponse(b []byte) error {
+func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	fmt.Println("SendPathResponse!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
@@ -2058,10 +2051,16 @@ func (s *connection) SendPathResponse(b []byte) error {
 	ecn := s.sentPacketHandler.ECNMode(true)
 	now := time.Now()
 	s.registerPackedShortHeaderPacket(p, ecn, now)
-	if s.conn2 == nil {
-		fmt.Println("conn2 has not set yet.")
+	if path != nil {
+		fmt.Println("Use Path to send PathResponse")
+		path.Send(buf, uint16(maxSize), ecn)
+	} else {
+		fmt.Println("[error] should use path.")
+		if s.conn2 == nil {
+			fmt.Println("conn2 has not set yet.")
+		}
+		s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 	}
-	s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 
 	return err
 }
@@ -2069,7 +2068,9 @@ func (s *connection) SendPathResponse(b []byte) error {
 // Use Path to migrate
 func (s *connection) Migration(p *Path) error {
 	if p != nil {
+		fmt.Println("[migration] set connection sendConn")
 		s.sendQueue.Migration(p.SendConn)
+		s.conn = p.SendConn
 	} else {
 		s.sendQueue.Migration(nil)
 	}

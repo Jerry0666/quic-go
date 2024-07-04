@@ -13,7 +13,6 @@ type sender interface {
 	WouldBlock() bool
 	Available() <-chan struct{}
 	Close()
-	SetBackup(conn2 sendConn)
 	Migration(conn sendConn)
 }
 
@@ -32,14 +31,6 @@ type sendQueue struct {
 	migration     chan struct{} // Used to transmit migration signals
 	migrationConn chan sendConn // Used to transmit migration conn
 	conn          sendConn
-	conn2         sendConn
-}
-
-func (h *sendQueue) SetBackup(conn2 sendConn) {
-	if conn2 == nil {
-		fmt.Println("sendConn is nil")
-	}
-	h.conn2 = conn2
 }
 
 func (h *sendQueue) Migration(conn sendConn) {
@@ -118,7 +109,6 @@ func (h *sendQueue) Run() error {
 			conn := <-h.migrationConn
 			if conn == nil {
 				fmt.Println("[sendQueue] receive the migration signal at the server side.")
-				AlreadyMigrated = true
 			} else {
 				fmt.Println("[sendQueue] receive the migration signal, and conn is not nil.")
 				h.conn = conn
@@ -130,16 +120,7 @@ func (h *sendQueue) Run() error {
 			shouldClose = true
 		case e := <-h.queue:
 			if AlreadyMigrated {
-				err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
-				if err != nil {
-					// This additional check enables:
-					// 1. Checking for "datagram too large" message from the kernel, as such,
-					// 2. Path MTU discovery,and
-					// 3. Eventual detection of loss PingFrame.
-					if !isSendMsgSizeErr(err) {
-						return err
-					}
-				}
+				fmt.Println("[error] AlreadyMigrated should not be true.")
 			} else {
 				err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
 				if err != nil {
@@ -150,24 +131,6 @@ func (h *sendQueue) Run() error {
 					if !isSendMsgSizeErr(err) {
 						return err
 					}
-				}
-			}
-			e.buf.Release()
-			select {
-			case h.available <- struct{}{}:
-			default:
-			}
-		case e := <-h.queue2:
-			fmt.Println("receive from queue2!")
-			// temporarily hardcode, an explicit signal is needed
-			// to specify the use of the second conn
-			if h.conn2 == nil {
-				fmt.Println("sendQueue conn2 is nil.")
-			}
-			err := h.conn2.Write(e.buf.Data, e.gsoSize, e.ecn)
-			if err != nil {
-				if !isSendMsgSizeErr(err) {
-					return err
 				}
 			}
 			e.buf.Release()

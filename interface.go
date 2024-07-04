@@ -227,12 +227,8 @@ type MPConnection interface {
 	GetTransport() *Transport
 	SetTransport(*Transport)
 
-	// Set the backup connection, should trigger the Path Validation Procedure,
-	// but now hardcode temporarily, just use the Conn2 in Transport to set.
-	ProbePath(*Transport)
-
 	SendPathChallenge(*Path) error
-	SendPathResponse([]byte) error
+	SendPathResponse([]byte, *Path) error
 
 	// If conn2 is already set, migration to conn2.
 	Migration(*Path) error
