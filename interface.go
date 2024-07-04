@@ -230,7 +230,7 @@ type MPConnection interface {
 	SendPathChallenge(*Path) error
 	SendPathResponse([]byte, *Path) error
 
-	// If conn2 is already set, migration to conn2.
+	// Migration to Path connection
 	Migration(*Path) error
 }
 

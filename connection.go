@@ -136,8 +136,6 @@ type connection struct {
 	conn      sendConn
 	sendQueue sender
 
-	// backup connection, for the migration.
-	conn2 sendConn
 	// May also need sendQueue2? now use the same sender.
 
 	streamsMap      streamManager
@@ -1425,13 +1423,18 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 // handlePacket is called by the server with a new packet
 func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
-	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() && s.conn2 == nil {
-		// modify to use Path structure
-		fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
-		fmt.Println("[server] create a new path and set the pathMap")
-		path := NewPath(nil, p.remoteAddr, false)
-		path.ServerSet(s.conn.GetRawConn(), p)
-		s.pathMap[p.remoteAddr.String()] = path
+	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
+		_, ok := s.pathMap[p.remoteAddr.String()]
+		fmt.Printf("[debug] ok:%v\n", ok)
+		if !ok {
+			// modify to use Path structure
+			fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
+			fmt.Println("[server] create a new path and set the pathMap")
+			path := NewPath(nil, p.remoteAddr, false)
+			path.ServerSet(s.conn.GetRawConn(), p)
+			s.pathMap[p.remoteAddr.String()] = path
+		}
+
 	}
 
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
@@ -2034,7 +2037,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 		fmt.Println("Use Path to send!!!")
 		path.Send(buf, uint16(maxSize), ecn)
 	} else {
-		s.sendQueue.Send2(buf, uint16(maxSize), ecn)
+		fmt.Println("[error] path is nil")
 	}
 
 	return err
@@ -2056,10 +2059,6 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 		path.Send(buf, uint16(maxSize), ecn)
 	} else {
 		fmt.Println("[error] should use path.")
-		if s.conn2 == nil {
-			fmt.Println("conn2 has not set yet.")
-		}
-		s.sendQueue.Send2(buf, uint16(maxSize), ecn)
 	}
 
 	return err
