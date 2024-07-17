@@ -230,6 +230,9 @@ type MPConnection interface {
 	SendPathChallenge(*Path) error
 	SendPathResponse([]byte, *Path) error
 
+	// Get the Path now using
+	GetPath() *Path
+
 	// Migration to Path connection
 	Migration(*Path) error
 }

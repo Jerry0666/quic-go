@@ -38,6 +38,7 @@ type Path struct {
 	// for the send function
 	queue chan queueEntry
 
+	// used to set sendConn
 	Remote net.Addr
 
 	// This Path is for the client or server

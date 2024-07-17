@@ -217,8 +217,6 @@ type connection struct {
 	logger utils.Logger
 
 	*Transport
-	// Indicate weather the conn has been migration.
-	migrated bool
 
 	// transform remote addr of this packet
 	remoteAddr chan string
@@ -1287,7 +1285,7 @@ func (s *connection) handleFrames(
 	for len(data) > 0 {
 		l, frame, err := s.frameParser.ParseNext(data, encLevel, s.version)
 		// check the frame
-		if otherIP && !s.migrated {
+		if otherIP {
 			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
 
 			if !IsProbingFrame(frame) {
@@ -1301,7 +1299,7 @@ func (s *connection) handleFrames(
 				} else if path != nil {
 					fmt.Println("[server] get the path!")
 				}
-				s.migrated = true
+
 				s.Migration(path)
 			}
 		}
@@ -2075,6 +2073,33 @@ func (s *connection) Migration(p *Path) error {
 	}
 
 	return nil
+}
+
+// Get the Path now using
+func (s *connection) GetPath() *Path {
+	fmt.Println("[conn] GetPath")
+	p := &Path{}
+	// Set protocol.Perspective
+	p.perspective = s.perspective
+
+	// Set Transport
+	if s.Transport != nil {
+		fmt.Println("conn transport is not nil, set to the path")
+		p.Tr = s.Transport
+	} else {
+		fmt.Println("[error] conn transport is nil")
+		return nil
+	}
+	// Set remote
+	remote := s.conn.RemoteAddr()
+	fmt.Printf("[conn]remote addr: %s\n", remote.String())
+	p.Remote = remote
+
+	// Set conn
+	p.SendConn = s.conn
+	p.Rconn = p.Tr.conn
+
+	return p
 }
 
 func (s *connection) sendPacketsWithGSO(now time.Time) error {
