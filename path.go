@@ -21,6 +21,8 @@ const (
 	PathStatusProbeSuccess
 	// PathStatusActive means that this is the path that’s used to send QUIC packets
 	PathStatusActive
+
+	PathStatusIdle
 )
 
 // Path is a network path.

@@ -235,6 +235,11 @@ type MPConnection interface {
 
 	// Migration to Path connection
 	Migration(*Path) error
+
+	// record each path
+	RecordPath(*Path)
+
+	CheckStatus() string
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

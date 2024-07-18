@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -222,6 +223,8 @@ type connection struct {
 	remoteAddr chan string
 	// Use a map to store all Path
 	pathMap map[string]*Path
+	// Path now using
+	UsingPath *Path
 }
 
 func (s *connection) GetTransport() *Transport {
@@ -384,6 +387,7 @@ var newClientConnection = func(
 		tracer:              tracer,
 		versionNegotiated:   hasNegotiatedVersion,
 		version:             v,
+		pathMap:             make(map[string]*Path),
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -2071,6 +2075,13 @@ func (s *connection) Migration(p *Path) error {
 	} else {
 		s.sendQueue.Migration(nil)
 	}
+	// modify path status
+
+	if s.perspective == protocol.PerspectiveClient {
+		s.UsingPath.Status = PathStatusIdle
+		s.UsingPath = p
+		s.UsingPath.Status = PathStatusActive
+	}
 
 	return nil
 }
@@ -2098,8 +2109,51 @@ func (s *connection) GetPath() *Path {
 	// Set conn
 	p.SendConn = s.conn
 	p.Rconn = p.Tr.conn
-
+	p.Status = PathStatusActive
+	s.RecordPath(p)
+	s.UsingPath = p
+	p.Status = PathStatusActive
 	return p
+}
+
+// record path for the status check
+func (s *connection) RecordPath(p *Path) {
+	fmt.Println()
+	fmt.Println("record the Path")
+	fmt.Printf("local addr:%s\n", p.Rconn.LocalAddr().String())
+	fmt.Printf("remote addr:%s\n", p.Remote.String())
+	_, ok := s.pathMap[p.Rconn.LocalAddr().String()]
+	if !ok {
+		fmt.Println("path has not been record, record it.")
+		s.pathMap[p.Rconn.LocalAddr().String()] = p
+	}
+	fmt.Println()
+}
+
+// return all path status
+func (s *connection) CheckStatus() string {
+	status := ""
+	i := 1
+	for _, path := range s.pathMap {
+		status += "Path"
+		status += strconv.Itoa(i)
+		status += ":"
+		status += path.Rconn.LocalAddr().String()
+		status += "=>"
+		status += path.Remote.String()
+
+		i++
+		switch path.Status {
+		case PathStatusActive:
+			status += " Active"
+		case PathStatusIdle:
+			status += " Idle"
+		case PathStatusProbing:
+			status += " Probing"
+		}
+		status += "\n"
+	}
+	return status
 }
 
 func (s *connection) sendPacketsWithGSO(now time.Time) error {
