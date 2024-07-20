@@ -240,6 +240,7 @@ type MPConnection interface {
 	RecordPath(*Path)
 
 	CheckStatus() string
+	GetPathByIp(ip string) *Path
 }
 
 // StatelessResetKey is a key used to derive stateless reset tokens.

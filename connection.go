@@ -2156,6 +2156,23 @@ func (s *connection) CheckStatus() string {
 	return status
 }
 
+func (s *connection) GetPathByIp(ip string) *Path {
+	path, ok := s.pathMap[ip]
+	if ok {
+		return path
+	}
+	// compare substring
+	n := len(ip)
+	// Suppose no two path use same ip
+	for pathIP, path := range s.pathMap {
+		if ip == pathIP[:n] {
+			fmt.Printf("find ip match! ip:%s\n", ip)
+			return path
+		}
+	}
+	return nil
+}
+
 func (s *connection) sendPacketsWithGSO(now time.Time) error {
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
