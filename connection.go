@@ -2024,11 +2024,22 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 	}
 }
 
+// Use connection's connIDManager to get a unused conn id, and set it to the Path.
+func (s *connection) SetPathConnId(path *Path) error {
+	if !s.connIDManager.HaveFreeConnId() {
+		return errors.New("don't have free conn id.")
+	}
+	connId := s.connIDManager.GetFreeConnId()
+	fmt.Printf("[Path] Set connId %s to the Path\n", connId.ConnectionID.String())
+	path.connId = connId
+	return nil
+}
+
 func (s *connection) SendPathChallenge(path *Path) error {
 	fmt.Println("SendPathChallenge!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
-	p, err := s.packer.PackPathChallenge(buf, maxSize, s.version)
+	p, err := s.packer.PackPathChallenge(buf, maxSize, s.version, path)
 	if err != nil {
 		fmt.Printf("err happen:%v\n", err)
 	}

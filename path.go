@@ -52,6 +52,9 @@ type Path struct {
 	Rconn rawConn
 	// for the send
 	SendConn sendConn
+
+	// conn id
+	connId newConnID
 }
 
 func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {

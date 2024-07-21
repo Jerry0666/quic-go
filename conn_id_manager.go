@@ -119,6 +119,7 @@ func (h *connIDManager) addConnectionID(seq uint64, connID protocol.ConnectionID
 		return nil
 	}
 	// insert a new element somewhere in the middle
+	// Let the connection ids be arranged in sequence order
 	for el := h.queue.Front(); el != nil; el = el.Next() {
 		if el.Value.SequenceNumber == seq {
 			if el.Value.ConnectionID != connID {
@@ -198,8 +199,13 @@ func (h *connIDManager) shouldUpdateConnID() bool {
 	// For later changes, only change if
 	// 1. The queue of connection IDs is filled more than 50%.
 	// 2. We sent at least PacketsPerConnectionID packets
-	return 2*h.queue.Len() >= protocol.MaxActiveConnectionIDs &&
-		h.packetsSinceLastChange >= h.packetsPerConnectionID
+
+	// return 2*h.queue.Len() >= protocol.MaxActiveConnectionIDs &&
+	// 	h.packetsSinceLastChange >= h.packetsPerConnectionID
+
+	// Modified to not change connection id.
+	// Connection id should only relate to path, if other condition need to consider, need more complex mechanism.
+	return false
 }
 
 func (h *connIDManager) Get() protocol.ConnectionID {
@@ -211,4 +217,19 @@ func (h *connIDManager) Get() protocol.ConnectionID {
 
 func (h *connIDManager) SetHandshakeComplete() {
 	h.handshakeComplete = true
+}
+
+func (h *connIDManager) HaveFreeConnId() bool {
+	if h.queue.Len() > 1 {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (h *connIDManager) GetFreeConnId() newConnID {
+	// return the second item in the queue
+	e := h.queue.Front().Next()
+	connID := h.queue.Remove(e)
+	return connID
 }
