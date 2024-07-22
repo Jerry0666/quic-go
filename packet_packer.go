@@ -29,7 +29,7 @@ type packer interface {
 	SetToken([]byte)
 
 	PackPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, path *Path) (shortHeaderPacket, error)
-	PackPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte) (shortHeaderPacket, error)
+	PackPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte, path *Path) (shortHeaderPacket, error)
 }
 
 type sealer interface {
@@ -487,7 +487,7 @@ func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize prot
 	connID := path.connId.ConnectionID
 	// hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	var pl payload
-	p_ch := &wire.PathChallengeFrame{Data: [8]byte{1, 1, 1, 1, 2, 2, 2, 2}}
+	p_ch := &wire.PathChallengeFrame{Data: path.challengeData}
 	frame := ackhandler.Frame{Frame: p_ch}
 	pl.frames = append(pl.frames, frame)
 	pl.length = frame.Frame.Length(v)
@@ -499,17 +499,17 @@ func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize prot
 	return s, err
 }
 
-func (p *packetPacker) PackPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte) (shortHeaderPacket, error) {
-	return p.appendPathResponse(buf, false, maxPacketSize, v, challenge)
+func (p *packetPacker) PackPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte, path *Path) (shortHeaderPacket, error) {
+	return p.appendPathResponse(buf, maxPacketSize, v, challenge, path)
 }
 
-func (p *packetPacker) appendPathResponse(buf *packetBuffer, onlyAck bool, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte) (shortHeaderPacket, error) {
+func (p *packetPacker) appendPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte, path *Path) (shortHeaderPacket, error) {
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
-	connID := p.getDestConnID()
+	connID := path.connId.ConnectionID
 	// hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	var pl payload
 	p_re := &wire.PathResponseFrame{Data: [8]byte(challenge)}

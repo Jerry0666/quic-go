@@ -958,6 +958,7 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 			s.remoteAddr <- p.remoteAddr.String()
 		}()
 	}
+	// make a test, if the conn id of the packet is differ than the conn id know using, transform the conn id.
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
 		return false
@@ -1434,6 +1435,10 @@ func (s *connection) handlePacket(p receivedPacket) {
 			fmt.Println("[server] create a new path and set the pathMap")
 			path := NewPath(nil, p.remoteAddr, false)
 			path.ServerSet(s.conn.GetRawConn(), p)
+			err := s.SetPathConnId(path)
+			if err != nil {
+				fmt.Printf("err: %v\n", err)
+			}
 			s.pathMap[p.remoteAddr.String()] = path
 		}
 
@@ -2027,7 +2032,7 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 // Use connection's connIDManager to get a unused conn id, and set it to the Path.
 func (s *connection) SetPathConnId(path *Path) error {
 	if !s.connIDManager.HaveFreeConnId() {
-		return errors.New("don't have free conn id.")
+		return fmt.Errorf("don't have free conn id")
 	}
 	connId := s.connIDManager.GetFreeConnId()
 	fmt.Printf("[Path] Set connId %s to the Path\n", connId.ConnectionID.String())
@@ -2060,7 +2065,7 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	fmt.Println("SendPathResponse!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
-	p, err := s.packer.PackPathResponse(buf, maxSize, s.version, b)
+	p, err := s.packer.PackPathResponse(buf, maxSize, s.version, b, path)
 	if err != nil {
 		fmt.Printf("err happen:%v\n", err)
 	}

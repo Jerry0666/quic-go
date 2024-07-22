@@ -396,7 +396,7 @@ func (t *Transport) listen(conn rawConn) {
 		// TODO: This code is used to ignore wsa errors on Windows.
 		// Since net.Error.Temporary is deprecated as of Go 1.18, we should find a better solution.
 		// See https://github.com/quic-go/quic-go/issues/1737 for details.
-		if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+		if _, ok := err.(net.Error); ok {
 			t.mutex.Lock()
 			closed := t.closed
 			t.mutex.Unlock()

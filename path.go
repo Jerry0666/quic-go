@@ -1,6 +1,7 @@
 package quic
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net"
 
@@ -55,6 +56,8 @@ type Path struct {
 
 	// conn id
 	connId newConnID
+
+	challengeData [8]byte
 }
 
 func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
@@ -65,12 +68,18 @@ func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
 		per = protocol.PerspectiveServer
 	}
 
+	// generate the random challenge data
+	challenge := make([]byte, 8)
+	rand.Read(challenge)
+
 	p := &Path{
-		queue:       make(chan queueEntry, sendQueueCapacity),
-		Tr:          T,
-		Remote:      remoteAddr,
-		perspective: per,
+		queue:         make(chan queueEntry, sendQueueCapacity),
+		Tr:            T,
+		Remote:        remoteAddr,
+		perspective:   per,
+		challengeData: [8]byte(challenge),
 	}
+	fmt.Printf("[Path] generate the random challenge data:%x\n", p.challengeData)
 	return p
 
 }
@@ -122,6 +131,7 @@ func (p *Path) Send(pa *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
 	p.queue <- queueEntry{buf: pa, gsoSize: gsoSize, ecn: ecn}
 }
 
+// run the path send for loop
 func (p *Path) Run() error {
 	for {
 		e := <-p.queue
