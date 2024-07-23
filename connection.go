@@ -76,6 +76,8 @@ type receivedPacket struct {
 	info packetInfo // only valid if the contained IP address is valid
 	//Is from another IP addr?
 	otherIP bool
+	//Is from another Path than now Using
+	otherPath bool
 }
 
 func (p *receivedPacket) Size() protocol.ByteCount { return protocol.ByteCount(len(p.data)) }
@@ -830,6 +832,18 @@ func (s *connection) handlePacketImpl(rp receivedPacket) bool {
 	var processed bool
 	data := rp.data
 	p := rp
+	// Already have the UsingPath but the Path receiveConnId has not set.
+	// Need to check this packek is from other path
+	if s.UsingPath != nil && s.UsingPath.receiveConnId == nil && !rp.otherPath {
+		fmt.Println("[Conn] Path receiveConnId has not set, set it.")
+		receiveConnId, err := wire.ParseConnectionID(p.data, s.srcConnIDLen)
+		if err != nil {
+			fmt.Println("[error] ParseConntion ID err:%v\n", err)
+		}
+		fmt.Printf("conn id:%s\n", receiveConnId.String())
+		s.UsingPath.receiveConnId = &receiveConnId
+	}
+
 	for len(data) > 0 {
 		var destConnID protocol.ConnectionID
 		if counter > 0 {
@@ -897,6 +911,7 @@ func (s *connection) handlePacketImpl(rp receivedPacket) bool {
 			if counter > 0 {
 				p.buffer.Split()
 			}
+			// destConnID is empty in normal case.
 			processed = s.handleShortHeaderPacket(p, destConnID)
 			break
 		}
@@ -958,7 +973,7 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 			s.remoteAddr <- p.remoteAddr.String()
 		}()
 	}
-	// make a test, if the conn id of the packet is differ than the conn id know using, transform the conn id.
+	// make a test, if the conn id of the packet is differ than the conn id now using, transform the conn id.
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
 		return false
@@ -2119,7 +2134,7 @@ func (s *connection) GetPath() *Path {
 	}
 	// Set remote
 	remote := s.conn.RemoteAddr()
-	fmt.Printf("[conn]remote addr: %s\n", remote.String())
+	fmt.Printf("[conn] remote addr: %s\n", remote.String())
 	p.Remote = remote
 
 	// Set conn

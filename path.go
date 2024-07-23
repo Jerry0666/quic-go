@@ -7,6 +7,7 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
+	"github.com/quic-go/quic-go/internal/wire"
 )
 
 // PathStatus is the status of a path.
@@ -58,6 +59,8 @@ type Path struct {
 	connId newConnID
 
 	challengeData [8]byte
+	// receive conn id
+	receiveConnId *ConnectionID
 }
 
 func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
@@ -120,11 +123,46 @@ func (p *Path) SetIP(ip string, port int) {
 		}
 	} else {
 		fmt.Println("[Path] listen on new rawConn")
-		go p.Tr.listen(p.Rconn)
+		// new path don't use transport to listen, use path to listen and transfer the packet to transport to handle.
+		go p.listen(p.Rconn)
 	}
 	go p.Run()
 
 	p.SendConn = newSendConn(conn, p.Remote, packetInfo{}, utils.DefaultLogger)
+}
+
+// copy from transport.listen
+func (path *Path) listen(conn rawConn) {
+	fmt.Printf("[Path] listen on %s\n", conn.LocalAddr().String())
+	// not do getMultiplexer().AddConn, if needed, add it.
+	// so no need to do getMultiplexer().RemoveConn
+	defer fmt.Println("[Path] listen close!")
+	for {
+		p, err := conn.ReadPacket()
+		if err != nil {
+			// Windows returns an error when receiving a UDP datagram that doesn't fit into the provided buffer.
+			if isRecvMsgSizeErr(err) {
+				continue
+			}
+			fmt.Printf("[Path][listen] err:%v\n", err)
+			return
+		}
+
+		if path.receiveConnId == nil {
+			fmt.Println("[Path] receiveConnId is nil, set it.")
+			connID, err := wire.ParseConnectionID(p.data, path.Tr.connIDLen)
+			if err != nil {
+				fmt.Printf("[Path] ParseConnectionId err:%v\n", err)
+			}
+			path.receiveConnId = &connID
+		}
+
+		// this path is not using now, mark this packet is from other path
+		if path.Status != PathStatusActive {
+			p.otherPath = true
+		}
+		path.Tr.handlePacket(p)
+	}
 }
 
 func (p *Path) Send(pa *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
