@@ -911,7 +911,8 @@ func (s *connection) handlePacketImpl(rp receivedPacket) bool {
 			if counter > 0 {
 				p.buffer.Split()
 			}
-			// destConnID is empty in normal case.
+			// get the destConnID
+			destConnID, _ = wire.ParseConnectionID(p.data, s.srcConnIDLen)
 			processed = s.handleShortHeaderPacket(p, destConnID)
 			break
 		}
@@ -1388,6 +1389,7 @@ func IsProbingFrame(f wire.Frame) bool {
 }
 
 func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel, destConnID protocol.ConnectionID) error {
+	// destConnID should not be empty
 	var err error
 	wire.LogFrame(s.logger, f, false)
 	switch frame := f.(type) {
@@ -1418,7 +1420,7 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		s.handlePathChallengeFrame(frame)
 	case *wire.PathResponseFrame:
 		fmt.Println("receive PathRedponseFrame")
-		// since we don't send PATH_CHALLENGEs, we don't expect PATH_RESPONSEs
+		s.handlePathResponseFrame(frame, destConnID)
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
@@ -1602,6 +1604,23 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
 	}
 
 	s.SendPathResponse(frame.Data[:], path)
+}
+
+func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, destConnID protocol.ConnectionID) {
+	fmt.Printf("[connection] handle the path response. destConnID:%s\n", destConnID.String())
+	if s.perspective == protocol.PerspectiveClient {
+		fmt.Println("client check the status")
+		fmt.Println(s.CheckStatus())
+	}
+	for _, path := range s.pathMap {
+		if path.receiveConnId != nil && path.receiveConnId.String() == destConnID.String() {
+			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
+			if reflect.DeepEqual(path.challengeData, frame.Data) {
+				fmt.Println("Path validation success!")
+				path.Status = PathStatusProbeSuccess
+			}
+		}
+	}
 }
 
 func (s *connection) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
@@ -2068,7 +2087,25 @@ func (s *connection) SendPathChallenge(path *Path) error {
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	if path != nil {
 		fmt.Println("Use Path to send!!!")
-		path.Send(buf, uint16(maxSize), ecn)
+		// At most send 3 times, each 10 seconds.
+		go func() {
+			success := false
+			for i := 0; i < 3; i++ {
+				path.Send(buf, uint16(maxSize), ecn)
+				time.Sleep(10 * time.Second)
+				if path.Status == PathStatusProbeSuccess || path.Status == PathStatusActive {
+					fmt.Println("Path validation success, break SendChallenge func")
+					success = true
+					break
+				} else if path.Status == PathStatusProbing {
+					continue
+				}
+			}
+			if !success {
+				fmt.Println("Path validation failure")
+			}
+		}()
+
 	} else {
 		fmt.Println("[error] path is nil")
 	}
@@ -2099,6 +2136,16 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 
 // Use Path to migrate
 func (s *connection) Migration(p *Path) error {
+	// check path status
+	if p.Status == PathStatusActive {
+		fmt.Println("[conn] path is already active")
+		return nil
+	}
+
+	if p.Status == PathStatusProbing {
+		fmt.Println("[conn][error] path is still probing")
+		return errors.New("path is still probing")
+	}
 	if p != nil {
 		fmt.Println("[migration] set connection sendConn")
 		s.sendQueue.Migration(p.SendConn)
@@ -2172,6 +2219,14 @@ func (s *connection) CheckStatus() string {
 		status += path.Rconn.LocalAddr().String()
 		status += "=>"
 		status += path.Remote.String()
+		status += " receiveConnId:"
+		if path.receiveConnId != nil {
+			status += " "
+			status += path.receiveConnId.String()
+			status += "."
+		} else {
+			status += " <nil>   ."
+		}
 
 		i++
 		switch path.Status {
@@ -2181,6 +2236,8 @@ func (s *connection) CheckStatus() string {
 			status += " Idle"
 		case PathStatusProbing:
 			status += " Probing"
+		case PathStatusProbeSuccess:
+			status += " ProbingSuccess"
 		}
 		status += "\n"
 	}

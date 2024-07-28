@@ -154,6 +154,7 @@ func (path *Path) listen(conn rawConn) {
 			if err != nil {
 				fmt.Printf("[Path] ParseConnectionId err:%v\n", err)
 			}
+			fmt.Printf("[Path] receive ConnId:%s\n", connID.String())
 			path.receiveConnId = &connID
 		}
 
