@@ -150,6 +150,7 @@ func (path *Path) listen(conn rawConn) {
 
 		if path.receiveConnId == nil {
 			fmt.Println("[Path] receiveConnId is nil, set it.")
+			fmt.Printf("connIDLen:%d\n", path.Tr.connIDLen)
 			connID, err := wire.ParseConnectionID(p.data, path.Tr.connIDLen)
 			if err != nil {
 				fmt.Printf("[Path] ParseConnectionId err:%v\n", err)

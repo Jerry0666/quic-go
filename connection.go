@@ -1416,10 +1416,10 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		err = s.handleStopSendingFrame(frame)
 	case *wire.PingFrame:
 	case *wire.PathChallengeFrame:
-		fmt.Println("receive PathChallenge.")
-		s.handlePathChallengeFrame(frame)
+		fmt.Println("receive PathChallenge")
+		s.handlePathChallengeFrame(frame, destConnID)
 	case *wire.PathResponseFrame:
-		fmt.Println("receive PathRedponseFrame")
+		fmt.Println("receive PathRedponse")
 		s.handlePathResponseFrame(frame, destConnID)
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
@@ -1445,8 +1445,9 @@ func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		_, ok := s.pathMap[p.remoteAddr.String()]
-		fmt.Printf("[debug] ok:%v\n", ok)
+		fmt.Printf("[debug][server] get the path ok:%v\n", ok)
 		if !ok {
+			// server transport is nil
 			// modify to use Path structure
 			fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
 			fmt.Println("[server] create a new path and set the pathMap")
@@ -1457,6 +1458,15 @@ func (s *connection) handlePacket(p receivedPacket) {
 				fmt.Printf("err: %v\n", err)
 			}
 			s.pathMap[p.remoteAddr.String()] = path
+
+			// parse the packet ConnId
+			fmt.Println("Parse the packet ConnId, use 4 as ConnIDLen")
+			connId, _ := wire.ParseConnectionID(p.data, 4)
+			fmt.Printf("path receive ConnId:%s, set it to path receiveConnId.\n", connId)
+			path.receiveConnId = &connId
+
+			// do the server to client side path validation
+			go s.SendPathChallenge(path)
 		}
 
 	}
@@ -1592,26 +1602,35 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 	return nil
 }
 
-func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame) {
-	remoteAddr := <-s.remoteAddr
-	fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
-	fmt.Println("find Path")
-	path, ok := s.pathMap[remoteAddr]
-	if !ok {
-		fmt.Println("[error] can't find path")
-	} else {
-		fmt.Println("find path successfully")
+func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, destConnID protocol.ConnectionID) {
+	if s.perspective == protocol.PerspectiveServer {
+		remoteAddr := <-s.remoteAddr
+		fmt.Println("[server] remoteAddr := <-s.remoteAddr")
+		fmt.Println("find Path")
+		path, ok := s.pathMap[remoteAddr]
+		if !ok {
+			fmt.Println("[error] can't find path")
+		} else {
+			fmt.Println("find path successfully")
+		}
+		s.SendPathResponse(frame.Data[:], path)
 	}
 
-	s.SendPathResponse(frame.Data[:], path)
+	if s.perspective == protocol.PerspectiveClient {
+		fmt.Println("[client] handle PathChallenge")
+		for _, path := range s.pathMap {
+			if path.receiveConnId != nil && path.receiveConnId.String() == destConnID.String() {
+				fmt.Printf("find the path. destConnID:%s\n", destConnID.String())
+				s.SendPathResponse(frame.Data[:], path)
+			}
+		}
+	}
 }
 
 func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, destConnID protocol.ConnectionID) {
 	fmt.Printf("[connection] handle the path response. destConnID:%s\n", destConnID.String())
-	if s.perspective == protocol.PerspectiveClient {
-		fmt.Println("client check the status")
-		fmt.Println(s.CheckStatus())
-	}
+	fmt.Println("check the status")
+	fmt.Println(s.CheckStatus())
 	for _, path := range s.pathMap {
 		if path.receiveConnId != nil && path.receiveConnId.String() == destConnID.String() {
 			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
@@ -2075,7 +2094,7 @@ func (s *connection) SetPathConnId(path *Path) error {
 }
 
 func (s *connection) SendPathChallenge(path *Path) error {
-	fmt.Println("SendPathChallenge!!!")
+	fmt.Println("[Conn][Path]SendPathChallenge!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
 	p, err := s.packer.PackPathChallenge(buf, maxSize, s.version, path)
@@ -2093,7 +2112,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			for i := 0; i < 3; i++ {
 				path.Send(buf, uint16(maxSize), ecn)
 				time.Sleep(10 * time.Second)
-				if path.Status == PathStatusProbeSuccess || path.Status == PathStatusActive {
+				if path.Status == PathStatusProbeSuccess || path.Status == PathStatusActive || path.Status == PathStatusIdle {
 					fmt.Println("Path validation success, break SendChallenge func")
 					success = true
 					break
