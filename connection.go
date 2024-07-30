@@ -1471,6 +1471,26 @@ func (s *connection) handlePacket(p receivedPacket) {
 
 	}
 
+	if s.perspective == protocol.PerspectiveServer && s.UsingPath == nil && s.conn.RemoteAddr().String() == p.remoteAddr.String() {
+		// check it si not long header packet
+		if !wire.IsLongHeaderPacket(p.data[0]) {
+			fmt.Println("[debug][server] Using path has not been set.")
+			path := NewPath(nil, p.remoteAddr, false)
+			path.ServerSet(s.conn.GetRawConn(), p)
+			fmt.Println("[debug][server] not set the ConnId.")
+
+			// parse the packet ConnId
+			fmt.Println("Parse the packet ConnId, use 4 as ConnIDLen")
+			connId, _ := wire.ParseConnectionID(p.data, 4)
+			fmt.Printf("path receive ConnId:%s, set it to path receiveConnId.\n", connId)
+			path.receiveConnId = &connId
+			path.Status = PathStatusActive
+
+			s.pathMap[p.remoteAddr.String()] = path
+			s.UsingPath = path
+		}
+	}
+
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		p.otherIP = true
 	}
@@ -2155,6 +2175,8 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 
 // Use Path to migrate
 func (s *connection) Migration(p *Path) error {
+	fmt.Println("check all path")
+	fmt.Println(s.CheckStatus())
 	// check path status
 	if p.Status == PathStatusActive {
 		fmt.Println("[conn] path is already active")
@@ -2179,6 +2201,15 @@ func (s *connection) Migration(p *Path) error {
 		s.UsingPath = p
 		s.UsingPath.Status = PathStatusActive
 	}
+
+	if s.perspective == protocol.PerspectiveServer {
+		s.UsingPath.Status = PathStatusIdle
+		s.UsingPath = p
+		s.UsingPath.Status = PathStatusActive
+	}
+
+	fmt.Println("check all path")
+	fmt.Println(s.CheckStatus())
 
 	return nil
 }
@@ -2246,6 +2277,8 @@ func (s *connection) CheckStatus() string {
 		} else {
 			status += " <nil>   ."
 		}
+
+		status += " sendConnId:"
 
 		i++
 		switch path.Status {
