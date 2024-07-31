@@ -492,7 +492,9 @@ func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize prot
 	pl.frames = append(pl.frames, frame)
 	pl.length = frame.Frame.Length(v)
 	kp := sealer.KeyPhase()
-	s, err := p.appendShortHeaderPacket(buf, connID, pn, pnLen, kp, pl, 0, maxPacketSize, sealer, false, v)
+	// add the padding
+	var padding protocol.ByteCount = 1200
+	s, err := p.appendShortHeaderPacket(buf, connID, pn, pnLen, kp, pl, padding, maxPacketSize, sealer, false, v)
 	if err != nil {
 		fmt.Printf("err happen:%v\n", err)
 	}

@@ -321,7 +321,7 @@ var newConnection = func(
 		MaxUniStreamNum:                 protocol.StreamNum(s.config.MaxIncomingUniStreams),
 		MaxAckDelay:                     protocol.MaxAckDelayInclGranularity,
 		AckDelayExponent:                protocol.AckDelayExponent,
-		DisableActiveMigration:          true,
+		DisableActiveMigration:          false,
 		StatelessResetToken:             &statelessResetToken,
 		OriginalDestinationConnectionID: origDestConnID,
 		// For interoperability with quic-go versions before May 2023, this value must be set to a value
@@ -432,7 +432,7 @@ var newClientConnection = func(
 		MaxUniStreamNum:                protocol.StreamNum(s.config.MaxIncomingUniStreams),
 		MaxAckDelay:                    protocol.MaxAckDelayInclGranularity,
 		AckDelayExponent:               protocol.AckDelayExponent,
-		DisableActiveMigration:         true,
+		DisableActiveMigration:         false,
 		// For interoperability with quic-go versions before May 2023, this value must be set to a value
 		// different from protocol.DefaultActiveConnectionIDLimit.
 		// If set to the default value, it will be omitted from the transport parameters, which will make
