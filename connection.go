@@ -1472,7 +1472,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 	}
 
 	if s.perspective == protocol.PerspectiveServer && s.UsingPath == nil && s.conn.RemoteAddr().String() == p.remoteAddr.String() {
-		// check it si not long header packet
+		// check it is not long header packet
 		if !wire.IsLongHeaderPacket(p.data[0]) {
 			fmt.Println("[debug][server] Using path has not been set.")
 			path := NewPath(nil, p.remoteAddr, false)
@@ -1486,8 +1486,13 @@ func (s *connection) handlePacket(p receivedPacket) {
 			path.receiveConnId = &connId
 			path.Status = PathStatusActive
 
+			// set the send ConnId
+			path.connId = s.connIDManager.activeConnectionID
+
 			s.pathMap[p.remoteAddr.String()] = path
 			s.UsingPath = path
+
+			s.connIDManager.UsingPath = path
 		}
 	}
 
@@ -2109,7 +2114,7 @@ func (s *connection) SetPathConnId(path *Path) error {
 	}
 	connId := s.connIDManager.GetFreeConnId()
 	fmt.Printf("[Path] Set connId %s to the Path\n", connId.ConnectionID.String())
-	path.connId = connId
+	path.connId = connId.ConnectionID
 	return nil
 }
 
@@ -2239,6 +2244,7 @@ func (s *connection) GetPath() *Path {
 	p.Rconn = p.Tr.conn
 	p.Status = PathStatusActive
 	s.RecordPath(p)
+	p.connId = s.connIDManager.activeConnectionID
 	s.UsingPath = p
 	p.Status = PathStatusActive
 	return p
@@ -2279,6 +2285,13 @@ func (s *connection) CheckStatus() string {
 		}
 
 		status += " sendConnId:"
+		if path.connId.IsEmpty() {
+			status += " <nil>   ."
+		} else {
+			status += " "
+			status += path.connId.String()
+			status += "."
+		}
 
 		i++
 		switch path.Status {

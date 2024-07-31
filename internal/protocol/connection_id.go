@@ -86,6 +86,15 @@ func ReadConnectionID(r io.Reader, l int) (ConnectionID, error) {
 	return c, err
 }
 
+// Check this ConnectionID has been setting
+func (c ConnectionID) IsEmpty() bool {
+	if c.l == 0 {
+		return true
+	} else {
+		return false
+	}
+}
+
 // Len returns the length of the connection ID in bytes
 func (c ConnectionID) Len() int {
 	return int(c.l)

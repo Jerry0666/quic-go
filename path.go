@@ -56,7 +56,7 @@ type Path struct {
 	SendConn sendConn
 
 	// conn id
-	connId newConnID
+	connId protocol.ConnectionID
 
 	challengeData [8]byte
 	// receive conn id

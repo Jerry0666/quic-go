@@ -484,7 +484,7 @@ func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize prot
 		return shortHeaderPacket{}, err
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
-	connID := path.connId.ConnectionID
+	connID := path.connId
 	// hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	var pl payload
 	p_ch := &wire.PathChallengeFrame{Data: path.challengeData}
@@ -509,7 +509,7 @@ func (p *packetPacker) appendPathResponse(buf *packetBuffer, maxPacketSize proto
 		return shortHeaderPacket{}, err
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
-	connID := path.connId.ConnectionID
+	connID := path.connId
 	// hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	var pl payload
 	p_re := &wire.PathResponseFrame{Data: [8]byte(challenge)}

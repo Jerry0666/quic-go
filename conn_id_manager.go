@@ -16,6 +16,14 @@ type newConnID struct {
 	StatelessResetToken protocol.StatelessResetToken
 }
 
+func (n newConnID) IsEmpty() bool {
+	if n.SequenceNumber == 0 {
+		return true
+	} else {
+		return false
+	}
+}
+
 type connIDManager struct {
 	queue list.List[newConnID]
 
@@ -35,6 +43,9 @@ type connIDManager struct {
 	addStatelessResetToken    func(protocol.StatelessResetToken)
 	removeStatelessResetToken func(protocol.StatelessResetToken)
 	queueControlFrame         func(wire.Frame)
+
+	// In order to manage path connId
+	UsingPath *Path
 }
 
 func newConnIDManager(
@@ -143,6 +154,8 @@ func (h *connIDManager) addConnectionID(seq uint64, connID protocol.ConnectionID
 }
 
 func (h *connIDManager) updateConnectionID() {
+	fmt.Println("[connIDManager][debug] update ConnectionID")
+	fmt.Printf("[connIDManager]retired connId: %s\n", h.activeConnectionID.String())
 	h.queueControlFrame(&wire.RetireConnectionIDFrame{
 		SequenceNumber: h.activeSequenceNumber,
 	})
@@ -158,6 +171,12 @@ func (h *connIDManager) updateConnectionID() {
 	h.packetsSinceLastChange = 0
 	h.packetsPerConnectionID = protocol.PacketsPerConnectionID/2 + uint32(h.rand.Int31n(protocol.PacketsPerConnectionID))
 	h.addStatelessResetToken(*h.activeStatelessResetToken)
+
+	fmt.Printf("[connIDManager] new active connId:%s\n", h.activeConnectionID.String())
+	if h.UsingPath != nil {
+		h.UsingPath.connId = h.activeConnectionID
+	}
+
 }
 
 func (h *connIDManager) Close() {
