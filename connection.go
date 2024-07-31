@@ -2205,12 +2205,18 @@ func (s *connection) Migration(p *Path) error {
 		s.UsingPath.Status = PathStatusIdle
 		s.UsingPath = p
 		s.UsingPath.Status = PathStatusActive
+		// modify connIDManager active connID, should write a function to modify other field
+		// may need to modify activeSequenceNumber, activeStatelessResetToken...
+		fmt.Println("[migraion] modify active ConnId")
+		s.connIDManager.activeConnectionID = s.UsingPath.connId
 	}
 
 	if s.perspective == protocol.PerspectiveServer {
 		s.UsingPath.Status = PathStatusIdle
 		s.UsingPath = p
 		s.UsingPath.Status = PathStatusActive
+
+		s.connIDManager.activeConnectionID = s.UsingPath.connId
 	}
 
 	fmt.Println("check all path")
