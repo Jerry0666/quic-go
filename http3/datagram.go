@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -15,7 +16,7 @@ import (
 
 var ErrDatagramNegotiationNotFinished = errors.New("the datagram setting negotiation is not finished")
 
-const DatagramRcvQueueLen = 128
+const DatagramRcvQueueLen = 1024
 
 type datagrammerMap struct {
 	mutex        sync.RWMutex
@@ -39,11 +40,12 @@ func newDatagrammerMap(conn quic.Connection, logger utils.Logger) *datagrammerMa
 
 func (m *datagrammerMap) newStreamAssociatedDatagrammer(str quic.Stream) *streamAssociatedDatagrammer {
 	d := &streamAssociatedDatagrammer{
-		str:     str,
-		conn:    m.conn,
-		rcvd:    make(chan struct{}),
-		ctx:     context.Background(),
-		rcvChan: make(chan []byte, 128),
+		str:         str,
+		conn:        m.conn,
+		rcvd:        make(chan struct{}),
+		ctx:         context.Background(),
+		rcvChan:     make(chan []byte, 128),
+		timeOutChan: make(chan struct{}),
 	}
 	m.mutex.Lock()
 	m.datagrammers[str.StreamID()] = d
@@ -67,6 +69,7 @@ func (m *datagrammerMap) runReceiving() {
 		buf := bytes.NewBuffer(data)
 		quarterStreamID, err := quicvarint.Read(buf)
 		if err != nil {
+			fmt.Printf("Reading datagram Quarter Stream ID failed: %s\n", err)
 			m.logger.Debugf("Reading datagram Quarter Stream ID failed: %s", err)
 			continue
 		}
@@ -75,6 +78,7 @@ func (m *datagrammerMap) runReceiving() {
 		stream, ok := m.datagrammers[protocol.StreamID(streamID)]
 		m.mutex.RUnlock()
 		if !ok {
+			fmt.Printf("Received datagram for unknown stream: %d\n", streamID)
 			m.logger.Debugf("Received datagram for unknown stream: %d", streamID)
 			continue
 		}
@@ -97,6 +101,8 @@ type Datagrammer interface {
 
 	HardcodedRead(ctx context.Context) ([]byte, error)
 
+	SetReadTimeOut(t time.Duration)
+
 	GetQuicConn() quic.Connection
 }
 
@@ -106,12 +112,37 @@ type streamAssociatedDatagrammer struct {
 	str  quic.Stream
 	conn quic.Connection
 
-	buf      []byte
 	rcvQueue [][]byte
 	rcvd     chan struct{}
 	rcvChan  chan []byte
 
+	// The time of timeout, each time call SetReadTimeOut should check its value
+	readTimeOut time.Time
+	// If timeout, send timeout signal
+	timeOutChan chan struct{}
+
 	ctx context.Context
+}
+
+func (d *streamAssociatedDatagrammer) SetReadTimeOut(t time.Duration) {
+	fmt.Println("[debug] Set Read timeout.")
+	// set timeout time
+	if !d.readTimeOut.IsZero() && d.readTimeOut.Before(time.Now().Add(t)) {
+		fmt.Println("[debug] has a earlier timeout time before.")
+		return
+	}
+	// update timeout
+	timeout := time.Now().Add(t)
+	d.readTimeOut = timeout
+	time.Sleep(t)
+	fmt.Println("[debug] after sleep!!")
+	// If timeout has not be update, send timeout signal
+	if timeout.Equal(d.readTimeOut) {
+		d.timeOutChan <- struct{}{}
+	} else {
+		fmt.Println("[debug] timeout has been update, don't sent timeout signal again.")
+	}
+
 }
 
 func (d *streamAssociatedDatagrammer) GetQuicConn() quic.Connection {
@@ -123,9 +154,6 @@ func (d *streamAssociatedDatagrammer) SendMessage(data []byte) error {
 		return errors.New("peer doesn't support datagram")
 	}
 
-	// d.buf = d.buf[:0]
-	// d.buf = (&datagramFrame{QuarterStreamID: uint64(d.str.StreamID() / 4)}).Append(d.buf)
-	// d.buf = append(d.buf, data...)
 	strID := d.str.StreamID()
 	if strID > 63 {
 		fmt.Println("stream id is bigger than 63, so length byte is more than one.")
@@ -146,8 +174,14 @@ func (d *streamAssociatedDatagrammer) ReceiveMessage() ([]byte, error) {
 	if !d.conn.ConnectionState().SupportsDatagrams {
 		return nil, errors.New("peer doesn't support datagram")
 	}
-	data := <-d.rcvChan
-	return data, nil
+
+	select {
+	case data := <-d.rcvChan:
+		return data, nil
+	case <-d.timeOutChan:
+		fmt.Println("[debub] read timeout!")
+		return nil, errors.New("timeout")
+	}
 }
 
 func (d *streamAssociatedDatagrammer) handleDatagram(data []byte) {

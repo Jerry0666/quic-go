@@ -42,7 +42,7 @@ func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
 		sent:     make(chan struct{}, 1),
 		closed:   make(chan struct{}),
 		sendChan: make(chan *wire.DatagramFrame, 1024),
-		recvChan: make(chan []byte, 1024),
+		recvChan: make(chan []byte, 2048),
 		logger:   logger,
 	}
 }
@@ -54,7 +54,6 @@ func (h *datagramQueue) AddtoChan(f *wire.DatagramFrame) error {
 		h.hasData()
 		return nil
 	} else {
-		fmt.Println("datagramQueue sendChan is full")
 		return errors.New("datagramQueue sendChan is full")
 	}
 }
@@ -122,7 +121,7 @@ func (h *datagramQueue) HandleDatagramFrame(f *wire.DatagramFrame) {
 		queued = true
 		h.recvChan <- data
 	} else {
-		fmt.Println("datagram receive chan is full")
+		fmt.Println("[error] datagram receive chan is full")
 	}
 
 	if !queued && h.logger.Debug() {
