@@ -46,7 +46,9 @@ func (m *datagrammerMap) newStreamAssociatedDatagrammer(str quic.Stream) *stream
 		ctx:         context.Background(),
 		rcvChan:     make(chan []byte, 128),
 		timeOutChan: make(chan struct{}),
+		sendNumber:  0,
 	}
+	// go d.sleepAndLog(30 * time.Second)
 	m.mutex.Lock()
 	m.datagrammers[str.StreamID()] = d
 	m.mutex.Unlock()
@@ -104,6 +106,8 @@ type Datagrammer interface {
 	SetReadTimeOut(t time.Duration)
 
 	GetQuicConn() quic.Connection
+
+	SleepAndLog(t time.Duration)
 }
 
 // streamAssociatedDatagrammer allows sending and receiving HTTP/3 datagrams before the associated quic
@@ -120,6 +124,8 @@ type streamAssociatedDatagrammer struct {
 	readTimeOut time.Time
 	// If timeout, send timeout signal
 	timeOutChan chan struct{}
+	// The number of send datagram func call
+	sendNumber int
 
 	ctx context.Context
 }
@@ -145,11 +151,20 @@ func (d *streamAssociatedDatagrammer) SetReadTimeOut(t time.Duration) {
 
 }
 
+// sleep some time, print some info after sleep.
+// should be call in a go routine
+func (d *streamAssociatedDatagrammer) SleepAndLog(t time.Duration) {
+	time.Sleep(t)
+	// log something
+	fmt.Printf("[log][Datagrammer] the number of send datagram func call:%d\n", d.sendNumber)
+}
+
 func (d *streamAssociatedDatagrammer) GetQuicConn() quic.Connection {
 	return d.conn
 }
 
 func (d *streamAssociatedDatagrammer) SendMessage(data []byte) error {
+	d.sendNumber++
 	if !d.conn.ConnectionState().SupportsDatagrams {
 		return errors.New("peer doesn't support datagram")
 	}

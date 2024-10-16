@@ -221,6 +221,9 @@ type connection struct {
 
 	*Transport
 
+	// the number of trigger send func call
+	TriggerNumber int
+
 	// transform remote addr of this packet
 	remoteAddr chan string
 	// Use a map to store all Path
@@ -525,8 +528,17 @@ func (s *connection) preSetup() {
 	}
 }
 
+// Sleep some time, then log some function call number
+func (s *connection) sleepAndLog(t time.Duration) {
+	fmt.Printf("[log][connection] log after %d second.\n", t/time.Second)
+	time.Sleep(t)
+	fmt.Printf("[log][connection] the number of triggerSend func call:%d\n", s.TriggerNumber)
+}
+
 // run the connection main loop
 func (s *connection) run() error {
+	s.TriggerNumber = 0
+	// go s.sleepAndLog(40 * time.Second)
 	var closeErr closeError
 	defer func() {
 		s.ctxCancel(closeErr.err)
@@ -1966,9 +1978,14 @@ func (s *connection) applyTransportParameters() {
 }
 
 func (s *connection) triggerSending(now time.Time) error {
+	s.TriggerNumber++
 	s.pacingDeadline = time.Time{}
 
 	sendMode := s.sentPacketHandler.SendMode(now)
+	if sendMode == ackhandler.SendAck {
+		sendMode = ackhandler.SendAny
+	}
+
 	//nolint:exhaustive // No need to handle pacing limited here.
 	switch sendMode {
 	case ackhandler.SendAny:
@@ -2096,9 +2113,11 @@ func (s *connection) sendPacketsWithoutGSO(now time.Time) error {
 			s.resetPacingDeadline()
 			return nil
 		}
-		if sendMode != ackhandler.SendAny {
-			return nil
-		}
+		// if sendMode != ackhandler.SendAny {
+		// 	fmt.Println("[debug] sendMode change, break sendPackets.")
+		// 	return nil
+		// }
+
 		// Prioritize receiving of packets over sending out more packets.
 		if len(s.receivedPackets) > 0 {
 			s.pacingDeadline = deadlineSendImmediately

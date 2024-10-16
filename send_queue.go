@@ -2,6 +2,7 @@ package quic
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
 )
@@ -29,6 +30,8 @@ type sendQueue struct {
 	migration     chan struct{} // Used to transmit migration signals
 	migrationConn chan sendConn // Used to transmit migration conn
 	conn          sendConn
+	// the number of packet receive from the queue
+	sendNumber int
 }
 
 func (h *sendQueue) Migration(conn sendConn) {
@@ -79,10 +82,17 @@ func (h *sendQueue) Available() <-chan struct{} {
 	return h.available
 }
 
+// sleep some time and then log
+func (h *sendQueue) sleepAndLog(t time.Duration) {
+	time.Sleep(t)
+	fmt.Printf("[log][sendQueue] the total packets received in the queue:%d\n", h.sendNumber)
+}
+
 func (h *sendQueue) Run() error {
 	defer close(h.runStopped)
 	var shouldClose bool
-	AlreadyMigrated := false
+	h.sendNumber = 0
+	// go h.sleepAndLog(40 * time.Second)
 	for {
 		if shouldClose && len(h.queue) == 0 {
 			return nil
@@ -102,18 +112,17 @@ func (h *sendQueue) Run() error {
 			// make sure that all queued packets are actually sent out
 			shouldClose = true
 		case e := <-h.queue:
-			if AlreadyMigrated {
-				fmt.Println("[error] AlreadyMigrated should not be true.")
-			} else {
-				err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
-				if err != nil {
-					// This additional check enables:
-					// 1. Checking for "datagram too large" message from the kernel, as such,
-					// 2. Path MTU discovery,and
-					// 3. Eventual detection of loss PingFrame.
-					if !isSendMsgSizeErr(err) {
-						return err
-					}
+			if len(e.buf.Data) > 1200 {
+				h.sendNumber++
+			}
+			err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
+			if err != nil {
+				// This additional check enables:
+				// 1. Checking for "datagram too large" message from the kernel, as such,
+				// 2. Path MTU discovery,and
+				// 3. Eventual detection of loss PingFrame.
+				if !isSendMsgSizeErr(err) {
+					return err
 				}
 			}
 			e.buf.Release()

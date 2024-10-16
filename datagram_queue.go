@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/utils/ringbuffer"
@@ -32,19 +33,25 @@ type datagramQueue struct {
 	sendChan chan *wire.DatagramFrame
 	recvChan chan []byte
 
+	// PopfromChan function call number
+	PopNumber int
+
 	logger utils.Logger
 }
 
 func newDatagramQueue(hasData func(), logger utils.Logger) *datagramQueue {
-	return &datagramQueue{
-		hasData:  hasData,
-		rcvd:     make(chan struct{}, 1),
-		sent:     make(chan struct{}, 1),
-		closed:   make(chan struct{}),
-		sendChan: make(chan *wire.DatagramFrame, 1024),
-		recvChan: make(chan []byte, 2048),
-		logger:   logger,
+	d := &datagramQueue{
+		hasData:   hasData,
+		rcvd:      make(chan struct{}, 1),
+		sent:      make(chan struct{}, 1),
+		closed:    make(chan struct{}),
+		sendChan:  make(chan *wire.DatagramFrame, 1024),
+		recvChan:  make(chan []byte, 2048),
+		logger:    logger,
+		PopNumber: 0,
 	}
+	// go d.SleepAndLog(40 * time.Second)
+	return d
 }
 
 // Use chan to manage datagram frame
@@ -58,7 +65,16 @@ func (h *datagramQueue) AddtoChan(f *wire.DatagramFrame) error {
 	}
 }
 
+// Sleep some time then log something, should be call in a go routine.
+func (h *datagramQueue) SleepAndLog(t time.Duration) {
+	fmt.Printf("[log][datagramQueue] log in %d second.\n", t/time.Second)
+	time.Sleep(t)
+	// log something
+	fmt.Printf("[log][datagramQueue] the number of PopfromChan func call:%d\n", h.PopNumber)
+}
+
 func (h *datagramQueue) PopfromChan() (*wire.DatagramFrame, error) {
+	h.PopNumber++
 	f := <-h.sendChan
 	return f, nil
 }
