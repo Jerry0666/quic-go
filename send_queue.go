@@ -1,7 +1,10 @@
 package quic
 
 import (
+	"encoding/csv"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -32,6 +35,8 @@ type sendQueue struct {
 	conn          sendConn
 	// the number of packet receive from the queue
 	sendNumber int
+	// the slice used to record send cycle time (nanosecond).
+	sendCycle []int64
 }
 
 func (h *sendQueue) Migration(conn sendConn) {
@@ -84,15 +89,35 @@ func (h *sendQueue) Available() <-chan struct{} {
 
 // sleep some time and then log
 func (h *sendQueue) sleepAndLog(t time.Duration) {
+	fmt.Printf("[log][sendQueue] write to CSV in %d second\n", t/time.Second)
 	time.Sleep(t)
 	fmt.Printf("[log][sendQueue] the total packets received in the queue:%d\n", h.sendNumber)
+	fmt.Println("[log][sendQueue] Write cycle time to CSV...")
+	file, err := os.OpenFile("/home/allen/excel/sendCycle.csv", os.O_WRONLY, 0777)
+	if err != nil {
+		fmt.Printf("open csv file err:%v\n", err)
+	}
+	w := csv.NewWriter(file)
+	w.Write([]string{"cycle time"})
+	for i := 0; i < 5000; i++ {
+		row := make([]string, 1)
+		row[0] = strconv.Itoa(int(h.sendCycle[i]))
+		w.Write(row)
+	}
+	w.Flush()
 }
 
 func (h *sendQueue) Run() error {
+	fmt.Println("[debug] sendQueue Run()")
 	defer close(h.runStopped)
 	var shouldClose bool
 	h.sendNumber = 0
-	// go h.sleepAndLog(40 * time.Second)
+	go h.sleepAndLog(60 * time.Second)
+
+	h.sendCycle = make([]int64, 5000)
+	var LastTime, t1 time.Time
+	LastTime = time.Now()
+	i := 0
 	for {
 		if shouldClose && len(h.queue) == 0 {
 			return nil
@@ -113,6 +138,16 @@ func (h *sendQueue) Run() error {
 			shouldClose = true
 		case e := <-h.queue:
 			if len(e.buf.Data) > 1200 {
+				if h.sendNumber > 100 {
+					// record cycle time
+					t1 = time.Now()
+					if i < 5000 {
+						// Cycle[0] should be removed, because LastTime has not been set.
+						h.sendCycle[i] = int64(t1.Sub(LastTime))
+						i++
+					}
+					LastTime = time.Now()
+				}
 				h.sendNumber++
 			}
 			err := h.conn.Write(e.buf.Data, e.gsoSize, e.ecn)
