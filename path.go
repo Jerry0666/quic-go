@@ -18,13 +18,11 @@ const (
 	PathStatusProbing PathStatus = iota
 	// PathStatusTimeout means that path probing ran into a timeout,
 	// or that a previously successfully probed path was abandoned.
-	PathStatusTimeout
+	PathStatusDead
 	// PathStatusProbeSuccess means that path probing succeeded. It is now possible to switch to this path.
-	PathStatusProbeSuccess
+	PathStatusAlive
 	// PathStatusActive means that this is the path that’s used to send QUIC packets
 	PathStatusActive
-
-	PathStatusIdle
 )
 
 // Path is a network path.

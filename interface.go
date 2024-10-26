@@ -236,7 +236,7 @@ type MPConnection interface {
 	// Migration to Path connection
 	Migration(*Path) error
 
-	// record each path
+	// record each path, use local addr as index.
 	RecordPath(*Path)
 
 	CheckStatus() string

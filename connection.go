@@ -1661,7 +1661,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, dest
 			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
 			if reflect.DeepEqual(path.challengeData, frame.Data) {
 				fmt.Println("Path validation success!")
-				path.Status = PathStatusProbeSuccess
+				path.Status = PathStatusAlive
 			}
 		}
 	}
@@ -2134,10 +2134,10 @@ func (s *connection) SendPathChallenge(path *Path) error {
 		// At most send 3 times, each 10 seconds.
 		go func() {
 			success := false
-			for i := 0; i < 3; i++ {
+			for i := 0; i < 5; i++ {
 				path.Send(buf, uint16(maxSize), ecn)
-				time.Sleep(10 * time.Second)
-				if path.Status == PathStatusProbeSuccess || path.Status == PathStatusActive || path.Status == PathStatusIdle {
+				time.Sleep(1 * time.Second)
+				if path.Status == PathStatusAlive || path.Status == PathStatusActive {
 					fmt.Println("Path validation success, break SendChallenge func")
 					success = true
 					break
@@ -2147,6 +2147,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			}
 			if !success {
 				fmt.Println("Path validation failure")
+				path.Status = PathStatusDead
 			}
 		}()
 
@@ -2202,7 +2203,7 @@ func (s *connection) Migration(p *Path) error {
 	// modify path status
 
 	if s.perspective == protocol.PerspectiveClient {
-		s.UsingPath.Status = PathStatusIdle
+		s.UsingPath.Status = PathStatusAlive
 		s.UsingPath = p
 		s.UsingPath.Status = PathStatusActive
 		// modify connIDManager active connID, should write a function to modify other field
@@ -2212,7 +2213,7 @@ func (s *connection) Migration(p *Path) error {
 	}
 
 	if s.perspective == protocol.PerspectiveServer {
-		s.UsingPath.Status = PathStatusIdle
+		s.UsingPath.Status = PathStatusAlive
 		s.UsingPath = p
 		s.UsingPath.Status = PathStatusActive
 
@@ -2303,12 +2304,12 @@ func (s *connection) CheckStatus() string {
 		switch path.Status {
 		case PathStatusActive:
 			status += " Active"
-		case PathStatusIdle:
-			status += " Idle"
 		case PathStatusProbing:
 			status += " Probing"
-		case PathStatusProbeSuccess:
-			status += " ProbingSuccess"
+		case PathStatusAlive:
+			status += " Alive"
+		case PathStatusDead:
+			status += " Dead"
 		}
 		status += "\n"
 	}
