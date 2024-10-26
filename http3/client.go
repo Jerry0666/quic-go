@@ -126,7 +126,6 @@ func (c *client) dial(ctx context.Context) error {
 	var err error
 	var conn quic.EarlyConnection
 	if c.dialer != nil {
-		fmt.Println("[trace] c.dialer != nil")
 		conn, err = c.dialer(ctx, c.hostname, c.tlsConf, c.config)
 	} else {
 		fmt.Println("[trace] c.dialer == nil")
