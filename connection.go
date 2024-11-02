@@ -968,12 +968,12 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 		}
 	}
 	fromOtherIP := p.otherIP
-	if fromOtherIP {
-		go func() {
-			fmt.Println("[connection] s.remoteAddr <- p.remoteAddr.String()")
-			s.remoteAddr <- p.remoteAddr.String()
-		}()
-	}
+	// if fromOtherIP {
+	// 	go func() {
+	// 		fmt.Println("[connection] s.remoteAddr <- p.remoteAddr.String()")
+	// 		s.remoteAddr <- p.remoteAddr.String()
+	// 	}()
+	// }
 	// make a test, if the conn id of the packet is differ than the conn id now using, transform the conn id.
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
@@ -1310,20 +1310,34 @@ func (s *connection) handleFrames(
 			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
 
 			if !IsProbingFrame(frame) {
-				fmt.Println("do the migration.")
-				remoteAddr := <-s.remoteAddr
-				fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
-				fmt.Printf("[server] remote IP:%s\n", remoteAddr)
-				path, ok := s.pathMap[remoteAddr]
-				if !ok {
-					fmt.Println("can't get the path")
-				} else if path != nil {
-					fmt.Println("[server] get the path!")
+				var path *Path
+				for _, p := range s.pathMap {
+					if p.receiveConnId.String() == destConnID.String() {
+						fmt.Printf("find the migration path, remote addr:%s\n", p.Remote.String())
+						path = p
+					}
 				}
+				if path == s.UsingPath {
+					fmt.Println("[debug] Migration has been done!")
+					goto Label1
+				}
+				fmt.Printf("Do the migration. destID:%s\n", destConnID.String())
+				fmt.Println(s.CheckStatus())
+
+				// remoteAddr := <-s.remoteAddr
+				// fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
+				// fmt.Printf("[server] remote IP:%s\n", remoteAddr)
+				// path, ok := s.pathMap[remoteAddr]
+				// if !ok {
+				// 	fmt.Println("can't get the path")
+				// } else if path != nil {
+				// 	fmt.Println("[server] get the path!")
+				// }
 
 				s.Migration(path)
 			}
 		}
+	Label1:
 		if err != nil {
 			return false, err
 		}
@@ -1445,11 +1459,11 @@ func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		_, ok := s.pathMap[p.remoteAddr.String()]
-		fmt.Printf("[debug][server] get the path ok:%v\n", ok)
+		fmt.Println("[server] get packet from other path")
 		if !ok {
 			// server transport is nil
 			// modify to use Path structure
-			fmt.Printf("receive from other ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
+			fmt.Printf("receive from new ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
 			fmt.Println("[server] create a new path and set the pathMap")
 			path := NewPath(nil, p.remoteAddr, false)
 			path.ServerSet(s.conn.GetRawConn(), p)
@@ -1466,7 +1480,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 			path.receiveConnId = &connId
 
 			// do the server to client side path validation
-			go s.SendPathChallenge(path)
+			s.SendPathChallenge(path)
 		}
 
 	}
@@ -1498,6 +1512,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		p.otherIP = true
+		fmt.Printf("is from other IP. conn remoteAddr:%s, packet remoteAddr:%s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
 	}
 
 	// Discard packets once the amount of queued packets is larger than
@@ -1629,15 +1644,23 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, destConnID protocol.ConnectionID) {
 	if s.perspective == protocol.PerspectiveServer {
-		remoteAddr := <-s.remoteAddr
-		fmt.Println("[server] remoteAddr := <-s.remoteAddr")
-		fmt.Println("find Path")
-		path, ok := s.pathMap[remoteAddr]
-		if !ok {
-			fmt.Println("[error] can't find path")
-		} else {
-			fmt.Println("find path successfully")
+		// remoteAddr := <-s.remoteAddr
+		// fmt.Printf("remoteAddr:%s\n", remoteAddr)
+		fmt.Printf("destConnID:%s\n", destConnID.String())
+		var path *Path
+		for _, p := range s.pathMap {
+			if p.receiveConnId.String() == destConnID.String() {
+				fmt.Printf("find the path, this challenge is from %s\n", p.Remote.String())
+				path = p
+				break
+			}
 		}
+		// path, ok := s.pathMap[remoteAddr]
+		// if !ok {
+		// 	fmt.Println("[error] can't find path")
+		// } else {
+		// 	fmt.Println("find path successfully")
+		// }
 		s.SendPathResponse(frame.Data[:], path)
 	}
 
@@ -2131,7 +2154,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	if path != nil {
 		fmt.Println("Use Path to send!!!")
-		// At most send 3 times, each 10 seconds.
+
 		go func() {
 			success := false
 			for i := 0; i < 5; i++ {
@@ -2181,8 +2204,6 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 
 // Use Path to migrate
 func (s *connection) Migration(p *Path) error {
-	fmt.Println("check all path")
-	fmt.Println(s.CheckStatus())
 	// check path status
 	if p.Status == PathStatusActive {
 		fmt.Println("[conn] path is already active")
@@ -2219,9 +2240,6 @@ func (s *connection) Migration(p *Path) error {
 
 		s.connIDManager.activeConnectionID = s.UsingPath.connId
 	}
-
-	fmt.Println("check all path")
-	fmt.Println(s.CheckStatus())
 
 	return nil
 }
