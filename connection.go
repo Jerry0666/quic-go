@@ -277,6 +277,7 @@ var newConnection = func(
 		logger:              logger,
 		version:             v,
 		pathMap:             make(map[string]*Path),
+		IdlePathSend:        make(chan struct{}),
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -1667,6 +1668,7 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, destConnID protocol.ConnectionID) {
+	fmt.Println(s.CheckStatus())
 	if s.perspective == protocol.PerspectiveServer {
 		fmt.Printf("destConnID:%s\n", destConnID.String())
 		var path *Path
