@@ -221,8 +221,6 @@ type connection struct {
 
 	*Transport
 
-	// transform remote addr of this packet
-	remoteAddr chan string
 	// Use a map to store all Path
 	pathMap map[string]*Path
 	// Path now using
@@ -517,12 +515,6 @@ func (s *connection) preSetup() {
 	s.windowUpdateQueue = newWindowUpdateQueue(s.streamsMap, s.connFlowController, s.framer.QueueControlFrame)
 	s.datagramQueue = newDatagramQueue(s.scheduleSending, s.logger)
 	s.connState.Version = s.version
-
-	// make the remoteAddr chan for the server
-	if s.perspective == protocol.PerspectiveServer {
-		fmt.Println("[server] make remoteAddr chan")
-		s.remoteAddr = make(chan string)
-	}
 }
 
 // run the connection main loop
