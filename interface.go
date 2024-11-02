@@ -230,6 +230,12 @@ type MPConnection interface {
 	SendPathChallenge(*Path) error
 	SendPathResponse([]byte, *Path) error
 
+	// regularly check weather the path is still alive,
+	// should be call in a go routine.
+	CheckAlive(*Path, time.Duration, int)
+
+	StartPMF()
+
 	// Get the Path now using
 	GetPath() *Path
 

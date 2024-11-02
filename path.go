@@ -23,6 +23,8 @@ const (
 	PathStatusAlive
 	// PathStatusActive means that this is the path that’s used to send QUIC packets
 	PathStatusActive
+	// Used to check whether Active path is alive or not.
+	PathStatusActiveProbing
 )
 
 // Path is a network path.
@@ -33,6 +35,9 @@ type Path struct {
 	// Note that the status can change even after path validation succeeded (e.g. because a path times out).
 	Notify <-chan struct{}
 	// might add some path characteristics (RTT, MTU, loss rate, etc.) here later
+
+	// Indicate whether this path is the ATSSS Active Path (in Active-Standy Steering mode).
+	ATSSSActivePath bool
 
 	// need to use Transpor to listen
 	Tr *Transport
