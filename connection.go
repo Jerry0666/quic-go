@@ -1696,8 +1696,6 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, de
 
 func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, destConnID protocol.ConnectionID) {
 	fmt.Printf("[connection] handle the path response. destConnID:%s\n", destConnID.String())
-	fmt.Println("check the status")
-	fmt.Println(s.CheckStatus())
 	for _, path := range s.pathMap {
 		if path.receiveConnId != nil && path.receiveConnId.String() == destConnID.String() {
 			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
@@ -1710,6 +1708,9 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, dest
 				if path.Status != PathStatusActive {
 					path.Status = PathStatusAlive
 				}
+				fmt.Println(s.CheckStatus())
+			} else {
+				fmt.Println("Path validation failure!")
 			}
 		}
 	}
@@ -2195,16 +2196,22 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 		path.challengeData = [8]byte(challenge)
 	}
 
+	addr := path.Rconn.LocalAddr().String()
+
 	for {
+		fmt.Printf("[%s][PMF] CheckAlive, IsIdle:%v\n", addr, IsIdle)
 		if IsIdle && path.Status == PathStatusActive {
-			fmt.Println("[PMF][debug] idle path become active, break the CheckAlive func.")
+			fmt.Printf("[%s][PMF] idle path become active, break the CheckAlive func.\n", addr)
+			go s.CheckAlive(s.UsingPath, time.Second, 1000)
 			break
 		}
-		if path.Status == PathStatusDead {
-			fmt.Println("[PMF][debug] Path is dead, break the CheckAlive func.")
+		if !IsIdle && path.Status == PathStatusDead {
+			fmt.Printf("[%s][PMF]Path is dead, break the CheckAlive func.\n", addr)
+			time.Sleep(time.Second)
+			go s.CheckAlive(path, time.Second, 1000)
 			break
 		}
-		fmt.Printf("[PMF] CheckAlive addr:%s ,i= %d\n", path.Rconn.LocalAddr().String(), i)
+
 		// may need to change challenge data
 		s.SendPathChallenge(path)
 		i++
@@ -2215,11 +2222,11 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 		time.Sleep(t)
 
 	}
-
 }
 
 // send the challenge on idle path, should be call on receive the signal.
 func (s *connection) sendOnIdlePath() {
+	fmt.Println("[PMF] sendOnIdlePath")
 	now := time.Now()
 	// find the idle path
 	var idle *Path
@@ -2228,6 +2235,7 @@ func (s *connection) sendOnIdlePath() {
 			idle = p
 		}
 	}
+
 	if idle == nil {
 		fmt.Println("[err] path has not been record yet.")
 		return
@@ -2241,15 +2249,17 @@ func (s *connection) sendOnIdlePath() {
 		fmt.Printf("err happen:%v\n", err)
 	}
 	s.registerPackedShortHeaderPacket(p, ecn, now)
+	fmt.Println("[PMF] idle path send!")
 	idle.Send(buf, uint16(maxSize), ecn)
-	fmt.Println("idle path send the challenge packet")
+	fmt.Println("[PMF] idle path send the challenge packet")
 }
 
 func (s *connection) SendPathChallenge(path *Path) error {
-	fmt.Printf("[Conn][Path]SendPathChallenge! local addr:%s\n", path.Rconn.LocalAddr().String())
+	addr := path.Rconn.LocalAddr().String()
+	fmt.Printf("[%s][Path]SendPathChallenge!\n", addr)
+	fmt.Printf("time:%v\n", time.Now())
 
 	if path != nil {
-		fmt.Println("Use Path to send!!!")
 		if path != s.UsingPath {
 			path.Status = PathStatusProbing
 		}
@@ -2260,23 +2270,27 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			success := false
 			for i := 0; i < 5; i++ {
 				if path == s.UsingPath {
-					fmt.Println("[PMF] active path send challenge.")
+					fmt.Printf("[%s][PMF] active path send challenge.\n", addr)
 					s.queueControlFrame(&wire.PathChallengeFrame{Data: path.challengeData})
 				} else {
 					s.IdlePathSend <- struct{}{}
 				}
 				time.Sleep(20 * time.Millisecond)
+				if path.ATSSSActivePath && path.Status == PathStatusAlive {
+					fmt.Printf("[%s]ATSSS active path become alive, migration back!\n", addr)
+					s.Migration(path)
+				}
 				if path.Status == PathStatusAlive || path.Status == PathStatusActive {
-					fmt.Printf("Path validation success in %d times. local addr:%s\n", i+1, path.Rconn.LocalAddr().String())
+					fmt.Printf("[%s]Path validation success in %d times.\n", addr, i+1)
 					success = true
 					break
 				} else if path.Status == PathStatusProbing || path.Status == PathStatusActiveProbing {
-					fmt.Printf("[PMF] PathChallenge continue in %d times. local addr:%s\n", i+1, path.Rconn.LocalAddr().String())
+					fmt.Printf("[%s][PMF] PathChallenge continue in %d times.\n", addr, i+1)
 					continue
 				}
 			}
 			if !success {
-				fmt.Println("Path validation failure")
+				fmt.Printf("[%s]Path validation failure\n", addr)
 				if path == s.UsingPath {
 					fmt.Println("[PMF] active path dead.")
 				}
@@ -2374,7 +2388,8 @@ func (s *connection) Migration(p *Path) error {
 	return nil
 }
 
-// Get the Path now using
+// Get the Path now using.
+// This path is determined to be ATSSS active path
 func (s *connection) GetPath() *Path {
 	fmt.Println("[conn] GetPath")
 	p := &Path{}
@@ -2393,6 +2408,11 @@ func (s *connection) GetPath() *Path {
 	remote := s.conn.RemoteAddr()
 	fmt.Printf("[conn] remote addr: %s\n", remote.String())
 	p.Remote = remote
+
+	// make the path queue
+	p.queue = make(chan queueEntry, sendQueueCapacity)
+	go p.Run()
+	p.ATSSSActivePath = true
 
 	// Set conn
 	p.SendConn = s.conn

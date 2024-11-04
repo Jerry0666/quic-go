@@ -176,6 +176,7 @@ func (p *Path) Send(pa *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
 
 // run the path send for loop
 func (p *Path) Run() error {
+	fmt.Println("[Path] run()")
 	for {
 		e := <-p.queue
 		fmt.Println("[Path] receive from queue")
