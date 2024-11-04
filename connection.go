@@ -2335,8 +2335,13 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	now := time.Now()
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	if path != nil {
-		fmt.Println("Use Path to send PathResponse")
-		path.Send(buf, uint16(maxSize), ecn)
+		if path == s.UsingPath {
+			fmt.Println("queue path receive frame")
+			s.queueControlFrame(&wire.PathResponseFrame{Data: [8]byte(b)})
+		} else {
+			fmt.Println("use path to send")
+			path.Send(buf, uint16(maxSize), ecn)
+		}
 	} else {
 		fmt.Println("[error] should use path.")
 	}
