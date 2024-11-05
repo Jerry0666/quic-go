@@ -180,9 +180,12 @@ func (p *Path) Run() error {
 	for {
 		e := <-p.queue
 		fmt.Println("[Path] receive from queue")
-		err := p.SendConn.Write(e.buf.Data, e.gsoSize, e.ecn)
-		if err != nil {
-			fmt.Printf("[Path] SendConn Write err:%v\n", err)
-		}
+		go func() {
+			err := p.SendConn.Write(e.buf.Data, e.gsoSize, e.ecn)
+			if err != nil {
+				fmt.Printf("[Path] SendConn Write err:%v\n", err)
+			}
+		}()
+
 	}
 }
