@@ -233,6 +233,9 @@ type connection struct {
 
 	// ATSSS steering mode
 	SteeringMode ATSSSsteeingMode
+
+	// start write path RTT to file
+	StartRecordRTT bool
 }
 
 func (s *connection) GetTransport() *Transport {
@@ -565,6 +568,11 @@ func (s *connection) GetIdle() *Path {
 	return Idle
 }
 
+// start write path rtt to file
+func (s *connection) StartRecord() {
+	s.StartRecordRTT = true
+}
+
 // Compare the RTTs of the two paths regularly and perform migration if necessary.
 // Should only be call in ATSSS smallest-delay steering mode.
 func (s *connection) ComparePathRTT(t time.Duration) {
@@ -579,6 +587,7 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 	time.Sleep(time.Second)
 
 	i := 0
+	migrationCount := 0
 	for {
 		ActiveRTT = s.UsingPath.RTT.SmoothedRTT().Microseconds()
 		// get idle path first
@@ -588,16 +597,25 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 			fmt.Printf("[PMF] Idle path has the smaller RTT (%d < %d)\n", IdleRTT, ActiveRTT)
 			// do the migration
 		}
-		i++
-		fmt.Fprintf(f, "%d: ", i)
-		if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
-			// Idle path is non3GPP
-			fmt.Fprintf(f, "%d\t%d\n", ActiveRTT, IdleRTT)
-		} else {
-			// Idle path is 3GPP
-			fmt.Fprintf(f, "%d\t%d\n", IdleRTT, ActiveRTT)
+		if s.StartRecordRTT {
+			i++
+			fmt.Fprintf(f, "%d: ", i)
+			if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
+				// Idle path is non3GPP
+				fmt.Fprintf(f, "%d\t%d\n", ActiveRTT, IdleRTT)
+			} else {
+				// Idle path is 3GPP
+				fmt.Fprintf(f, "%d\t%d\n", IdleRTT, ActiveRTT)
+			}
 		}
 		fmt.Printf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
+		if IdleRTT < ActiveRTT {
+			fmt.Println("[Smallest-Delay] Idle path has smaller path RTT, do migration")
+			fmt.Fprintf(f, "do the migration to [%s]\n", Idle.Rconn.LocalAddr().String())
+			s.Migration(Idle)
+			migrationCount++
+			fmt.Fprintf(f, "Using path addr: [%s]\n", s.UsingPath.Rconn.LocalAddr().String())
+		}
 		time.Sleep(t)
 	}
 }
@@ -2371,6 +2389,9 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			}
 			if !success {
 				fmt.Printf("[%s]Path validation failure\n", addr)
+				if s.SteeringMode == SmallestDelay {
+					panic("path failure")
+				}
 				if path == s.UsingPath {
 					fmt.Println("[PMF] active path dead.")
 				}
@@ -2441,9 +2462,9 @@ func (s *connection) Migration(p *Path) error {
 		return nil
 	}
 
-	if p.Status == PathStatusProbing {
-		fmt.Println("[conn][error] path is still probing")
-		return errors.New("path is still probing")
+	if p.Status == PathStatusDead {
+		fmt.Println("[conn][error] path is Dead")
+		return errors.New("path is Dead")
 	}
 	if p != nil {
 		fmt.Println("[migration] set connection sendConn")

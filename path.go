@@ -177,7 +177,7 @@ func (path *Path) listen(conn rawConn) {
 }
 
 func (p *Path) Send(pa *packetBuffer, gsoSize uint16, ecn protocol.ECN) {
-	p.queue <- queueEntry{buf: pa, gsoSize: gsoSize, ecn: ecn}
+	p.queue <- queueEntry{buf: pa, gsoSize: 0, ecn: ecn}
 }
 
 // run the path send for loop

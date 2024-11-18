@@ -236,6 +236,8 @@ type MPConnection interface {
 
 	StartPMF()
 
+	StartRecord()
+
 	// Get the Path now using
 	GetPath() *Path
 
