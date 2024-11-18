@@ -62,6 +62,16 @@ func (r *RTTStats) PTO(includeMaxAckDelay bool) time.Duration {
 	return pto
 }
 
+// Copy the RTTStats to the RTTStats on the path
+func (r *RTTStats) Copy(source *RTTStats) {
+	r.hasMeasurement = source.hasMeasurement
+	r.minRTT = source.minRTT
+	r.latestRTT = source.latestRTT
+	r.smoothedRTT = source.smoothedRTT
+	r.meanDeviation = source.meanDeviation
+	r.maxAckDelay = source.maxAckDelay
+}
+
 // UpdateRTT updates the RTT based on a new sample.
 func (r *RTTStats) UpdateRTT(sendDelta, ackDelay time.Duration, now time.Time) {
 	if sendDelta == InfDuration || sendDelta <= 0 {

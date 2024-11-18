@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
@@ -64,6 +65,10 @@ type Path struct {
 	challengeData [8]byte
 	// receive conn id
 	receiveConnId *ConnectionID
+
+	// the last pathchallenge send time
+	LastSendTime time.Time
+	RTT          *utils.RTTStats
 }
 
 func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
@@ -86,6 +91,7 @@ func NewPath(T *Transport, remoteAddr net.Addr, Isclient bool) *Path {
 		challengeData: [8]byte(challenge),
 	}
 	fmt.Printf("[Path] generate the random challenge data:%x\n", p.challengeData)
+	p.RTT = utils.NewRTTStats()
 	return p
 
 }

@@ -22,6 +22,9 @@ type packet struct {
 	includedInBytesInFlight bool
 	declaredLost            bool
 	skippedPacket           bool
+
+	// Indicate this packet is send on active path or idle path.
+	SendOnIdlePath bool
 }
 
 func (p *packet) outstanding() bool {
@@ -43,6 +46,7 @@ func getPacket() *packet {
 	p.includedInBytesInFlight = false
 	p.declaredLost = false
 	p.skippedPacket = false
+	p.SendOnIdlePath = false
 	return p
 }
 

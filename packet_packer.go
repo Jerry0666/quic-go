@@ -64,6 +64,9 @@ type shortHeaderPacket struct {
 	DestConnID      protocol.ConnectionID
 	PacketNumberLen protocol.PacketNumberLen
 	KeyPhase        protocol.KeyPhaseBit
+
+	// indicate which path is using
+	UsingIdle bool
 }
 
 func (p *shortHeaderPacket) IsAckEliciting() bool { return ackhandler.HasAckElicitingFrames(p.Frames) }

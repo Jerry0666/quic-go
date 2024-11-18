@@ -229,6 +229,9 @@ type connection struct {
 
 	// use to signal that idle path have data to send
 	IdlePathSend chan struct{}
+
+	// ATSSS steering mode
+	SteeringMode ATSSSsteeingMode
 }
 
 func (s *connection) GetTransport() *Transport {
@@ -277,7 +280,7 @@ var newConnection = func(
 		logger:              logger,
 		version:             v,
 		pathMap:             make(map[string]*Path),
-		IdlePathSend:        make(chan struct{}),
+		IdlePathSend:        make(chan struct{}, 5),
 	}
 	if origDestConnID.Len() > 0 {
 		s.logID = origDestConnID.String()
@@ -394,6 +397,8 @@ var newClientConnection = func(
 		version:             v,
 		pathMap:             make(map[string]*Path),
 		IdlePathSend:        make(chan struct{}),
+		// ATSSS steering mode
+		SteeringMode: SmallestDelay,
 	}
 	s.connIDManager = newConnIDManager(
 		destConnID,
@@ -539,7 +544,43 @@ func (s *connection) StartPMF() {
 	}
 	time.Sleep(500 * time.Millisecond)
 	go s.CheckAlive(IdlePath, time.Second, 1000)
+	if s.SteeringMode == SmallestDelay {
+		go s.ComparePathRTT(time.Second)
+	}
 
+}
+
+// Get the connection idle path
+func (s *connection) GetIdle() *Path {
+	var Idle *Path
+	for _, p := range s.pathMap {
+		if p != s.UsingPath {
+			Idle = p
+		}
+	}
+	if Idle == nil {
+		fmt.Println("[Error] can't find the connection idle path.")
+	}
+	return Idle
+}
+
+// Compare the RTTs of the two paths regularly and perform migration if necessary.
+// Should only be call in ATSSS smallest-delay steering mode.
+func (s *connection) ComparePathRTT(t time.Duration) {
+	var ActiveRTT, IdleRTT int64
+	var Idle *Path
+	for {
+		ActiveRTT = s.UsingPath.RTT.SmoothedRTT().Microseconds()
+		// get idle path first
+		Idle = s.GetIdle()
+		IdleRTT = Idle.RTT.SmoothedRTT().Microseconds()
+		if IdleRTT < ActiveRTT {
+			fmt.Printf("[PMF] Idle path has the smaller RTT (%d < %d)\n", IdleRTT, ActiveRTT)
+			// do the migration
+		}
+		fmt.Printf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
+		time.Sleep(t)
+	}
 }
 
 // run the connection main loop
@@ -1701,6 +1742,20 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, dest
 			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
 			if reflect.DeepEqual(path.challengeData, frame.Data) {
 				fmt.Println("Path validation success!")
+				if s.UsingPath != path {
+					now := time.Now()
+					RTTsimple := now.Sub(path.LastSendTime)
+					fmt.Printf("[RTT] idle path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
+					// set ack delay to 0
+					path.RTT.UpdateRTT(RTTsimple, 0*time.Microsecond, time.Now())
+					fmt.Printf("[RTT] smooth RTT: %d (microsecond)\n", path.RTT.SmoothedRTT()/time.Microsecond)
+				} else {
+					now := time.Now()
+					RTTsimple := now.Sub(path.LastSendTime)
+					fmt.Printf("[RTT] active path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
+					// set ack delay to 0
+					path.RTT.UpdateRTT(RTTsimple, 0*time.Microsecond, time.Now())
+				}
 				if path.Status == PathStatusActiveProbing {
 					path.Status = PathStatusActive
 					break
@@ -2202,7 +2257,7 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 		fmt.Printf("[%s][PMF] CheckAlive, IsIdle:%v\n", addr, IsIdle)
 		if IsIdle && path.Status == PathStatusActive {
 			fmt.Printf("[%s][PMF] idle path become active, break the CheckAlive func.\n", addr)
-			go s.CheckAlive(s.UsingPath, time.Second, 1000)
+			go s.CheckAlive(path, time.Second, 1000)
 			break
 		}
 		if !IsIdle && path.Status == PathStatusDead {
@@ -2248,8 +2303,11 @@ func (s *connection) sendOnIdlePath() {
 	if err != nil {
 		fmt.Printf("err happen:%v\n", err)
 	}
+	p.UsingIdle = true
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	fmt.Println("[PMF] idle path send!")
+	// record the path challenge send time
+	idle.LastSendTime = time.Now()
 	idle.Send(buf, uint16(maxSize), ecn)
 	fmt.Println("[PMF] idle path send the challenge packet")
 }
@@ -2271,14 +2329,17 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			for i := 0; i < 5; i++ {
 				if path == s.UsingPath {
 					fmt.Printf("[%s][PMF] active path send challenge.\n", addr)
+					path.LastSendTime = time.Now()
 					s.queueControlFrame(&wire.PathChallengeFrame{Data: path.challengeData})
 				} else {
 					s.IdlePathSend <- struct{}{}
+					s.scheduleSending()
 				}
 				time.Sleep(20 * time.Millisecond)
-				if path.ATSSSActivePath && path.Status == PathStatusAlive {
+				if path.ATSSSActivePath && path.Status == PathStatusAlive && s.SteeringMode == ActiveStandy {
 					fmt.Printf("[%s]ATSSS active path become alive, migration back!\n", addr)
 					s.Migration(path)
+					s.sentPacketHandler.RTTcopy(path.RTT)
 				}
 				if path.Status == PathStatusAlive || path.Status == PathStatusActive {
 					fmt.Printf("[%s]Path validation success in %d times.\n", addr, i+1)
@@ -2297,6 +2358,9 @@ func (s *connection) SendPathChallenge(path *Path) error {
 				path.Status = PathStatusDead
 				fmt.Println("[PMF] check all path")
 				fmt.Println(s.CheckStatus())
+				if path != s.UsingPath {
+					return
+				}
 				// do the migretion
 				// find the active path first
 				var activePath *Path
@@ -2311,6 +2375,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 					fmt.Println("[PMF] all path die!")
 				} else {
 					s.Migration(activePath)
+					s.sentPacketHandler.RTTcopy(activePath.RTT)
 				}
 
 			}
@@ -2418,6 +2483,9 @@ func (s *connection) GetPath() *Path {
 	p.queue = make(chan queueEntry, sendQueueCapacity)
 	go p.Run()
 	p.ATSSSActivePath = true
+
+	// new RTTstats
+	p.RTT = utils.NewRTTStats()
 
 	// Set conn
 	p.SendConn = s.conn
@@ -2661,7 +2729,12 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	if p.Ack != nil {
 		largestAcked = p.Ack.LargestAcked()
 	}
-	s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+	if p.UsingIdle {
+		s.sentPacketHandler.SentPacketOnIdle(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+	} else {
+		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+	}
+
 	s.connIDManager.SentPacket()
 }
 

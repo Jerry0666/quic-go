@@ -92,6 +92,9 @@ type sentPacketHandler struct {
 	// The alarm timeout
 	alarm time.Time
 
+	// Indicates whether the last frame of the last received ack was sent from the idle path.
+	LastAckFromIdle bool
+
 	enableECN  bool
 	ecnTracker ecnHandler
 
@@ -231,6 +234,70 @@ func (h *sentPacketHandler) packetsInFlight() int {
 	return packetsInFlight
 }
 
+func (h *sentPacketHandler) SentPacketOnIdle(
+	t time.Time,
+	pn, largestAcked protocol.PacketNumber,
+	streamFrames []StreamFrame,
+	frames []Frame,
+	encLevel protocol.EncryptionLevel,
+	ecn protocol.ECN,
+	size protocol.ByteCount,
+	isPathMTUProbePacket bool,
+) {
+	fmt.Printf("[Packet] record packet sent on idle Path. packet number:%d\n", pn)
+	h.bytesSent += size
+
+	pnSpace := h.getPacketNumberSpace(encLevel)
+	if h.logger.Debug() && pnSpace.history.HasOutstandingPackets() {
+		for p := max(0, pnSpace.largestSent+1); p < pn; p++ {
+			h.logger.Debugf("Skipping packet number %d", p)
+		}
+	}
+
+	pnSpace.largestSent = pn
+	isAckEliciting := len(streamFrames) > 0 || len(frames) > 0
+
+	if isAckEliciting {
+		pnSpace.lastAckElicitingPacketTime = t
+		h.bytesInFlight += size
+		if h.numProbesToSend > 0 {
+			h.numProbesToSend--
+		}
+	}
+	h.congestion.OnPacketSent(t, h.bytesInFlight, pn, size, isAckEliciting)
+
+	if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil {
+		h.ecnTracker.SentPacket(pn, ecn)
+	}
+
+	if !isAckEliciting {
+		pnSpace.history.SentNonAckElicitingPacket(pn)
+		if !h.peerCompletedAddressValidation {
+			h.setLossDetectionTimer()
+		}
+		return
+	}
+
+	p := getPacket()
+	p.SendTime = t
+	p.PacketNumber = pn
+	p.EncryptionLevel = encLevel
+	p.Length = size
+	p.LargestAcked = largestAcked
+	p.StreamFrames = streamFrames
+	p.Frames = frames
+	p.IsPathMTUProbePacket = isPathMTUProbePacket
+	p.includedInBytesInFlight = true
+	// Indicate this packet is from idle path.
+	p.SendOnIdlePath = true
+
+	pnSpace.history.SentAckElicitingPacket(p)
+	if h.tracer != nil && h.tracer.UpdatedMetrics != nil {
+		h.tracer.UpdatedMetrics(h.rttStats, h.congestion.GetCongestionWindow(), h.bytesInFlight, h.packetsInFlight())
+	}
+	h.setLossDetectionTimer()
+}
+
 func (h *sentPacketHandler) SentPacket(
 	t time.Time,
 	pn, largestAcked protocol.PacketNumber,
@@ -305,6 +372,11 @@ func (h *sentPacketHandler) getPacketNumberSpace(encLevel protocol.EncryptionLev
 	}
 }
 
+// Reset the RTT
+func (h *sentPacketHandler) RTTcopy(s *utils.RTTStats) {
+	h.rttStats.Copy(s)
+}
+
 func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.EncryptionLevel, rcvTime time.Time) (bool /* contained 1-RTT packet */, error) {
 	pnSpace := h.getPacketNumberSpace(encLevel)
 
@@ -333,6 +405,14 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 	// update the RTT, if the largest acked is newly acknowledged
 	if len(ackedPackets) > 0 {
 		if p := ackedPackets[len(ackedPackets)-1]; p.PacketNumber == ack.LargestAcked() {
+			if p.SendOnIdlePath {
+				fmt.Printf("[Packet] this packet (%d) is from idle path, don't update the RTT.\n", p.PacketNumber)
+				if h.LastAckFromIdle {
+					fmt.Println("[Packet] Continuously receiving acks from the idle path!")
+				}
+				h.LastAckFromIdle = true
+				goto skipUpdateRTT
+			}
 			// don't use the ack delay for Initial and Handshake packets
 			var ackDelay time.Duration
 			if encLevel == protocol.Encryption1RTT {
@@ -345,6 +425,7 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 			h.congestion.MaybeExitSlowStart()
 		}
 	}
+skipUpdateRTT:
 
 	// Only inform the ECN tracker about new 1-RTT ACKs if the ACK increases the largest acked.
 	if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil && largestAcked > pnSpace.largestAcked {
