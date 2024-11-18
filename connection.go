@@ -535,7 +535,7 @@ func (s *connection) preSetup() {
 func (s *connection) StartPMF() {
 	fmt.Println("[PMF]-----------------------------start measurement.")
 	s.UsingPath.ATSSSActivePath = true
-	go s.CheckAlive(s.UsingPath, time.Second, 1000)
+	go s.CheckAlive(s.UsingPath, 100*time.Millisecond, 1000)
 	var IdlePath *Path
 	for _, p := range s.pathMap {
 		if p != s.UsingPath {
@@ -547,9 +547,9 @@ func (s *connection) StartPMF() {
 		return
 	}
 	time.Sleep(500 * time.Millisecond)
-	go s.CheckAlive(IdlePath, time.Second, 1000)
+	go s.CheckAlive(IdlePath, 100*time.Millisecond, 1000)
 	if s.SteeringMode == SmallestDelay {
-		go s.ComparePathRTT(time.Second)
+		go s.ComparePathRTT(100 * time.Millisecond)
 	}
 
 }
@@ -2292,18 +2292,6 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 
 	for {
 		fmt.Printf("[%s][PMF] CheckAlive, IsIdle:%v\n", addr, IsIdle)
-		if IsIdle && path.Status == PathStatusActive {
-			fmt.Printf("[%s][PMF] idle path become active, break the CheckAlive func.\n", addr)
-			go s.CheckAlive(path, time.Second, 1000)
-			break
-		}
-		if !IsIdle && path.Status == PathStatusDead {
-			fmt.Printf("[%s][PMF]Path is dead, break the CheckAlive func.\n", addr)
-			time.Sleep(time.Second)
-			go s.CheckAlive(path, time.Second, 1000)
-			break
-		}
-
 		// may need to change challenge data
 		s.SendPathChallenge(path)
 		i++
