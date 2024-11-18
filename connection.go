@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"sync"
@@ -569,6 +570,15 @@ func (s *connection) GetIdle() *Path {
 func (s *connection) ComparePathRTT(t time.Duration) {
 	var ActiveRTT, IdleRTT int64
 	var Idle *Path
+
+	f, err := os.Create("/home/allen/atsss-ue/atsss/PathRtt.txt")
+	if err != nil {
+		fmt.Println("[error] create file err!")
+	}
+	fmt.Fprintln(f, "3GPP, non3GPP")
+	time.Sleep(time.Second)
+
+	i := 0
 	for {
 		ActiveRTT = s.UsingPath.RTT.SmoothedRTT().Microseconds()
 		// get idle path first
@@ -577,6 +587,15 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 		if IdleRTT < ActiveRTT {
 			fmt.Printf("[PMF] Idle path has the smaller RTT (%d < %d)\n", IdleRTT, ActiveRTT)
 			// do the migration
+		}
+		i++
+		fmt.Fprintf(f, "%d: ", i)
+		if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
+			// Idle path is non3GPP
+			fmt.Fprintf(f, "%d\t%d\n", ActiveRTT, IdleRTT)
+		} else {
+			// Idle path is 3GPP
+			fmt.Fprintf(f, "%d\t%d\n", IdleRTT, ActiveRTT)
 		}
 		fmt.Printf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
 		time.Sleep(t)
