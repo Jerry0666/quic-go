@@ -599,7 +599,11 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 		}
 		if s.StartRecordRTT {
 			i++
-			fmt.Fprintf(f, "%d: ", i)
+			if i%10 != 0 {
+				goto notPrint
+			}
+			j := i / 10
+			fmt.Fprintf(f, "%d: ", j)
 			if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
 				// Idle path is non3GPP
 				fmt.Fprintf(f, "%d\t%d\n", ActiveRTT, IdleRTT)
@@ -608,6 +612,7 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 				fmt.Fprintf(f, "%d\t%d\n", IdleRTT, ActiveRTT)
 			}
 		}
+	notPrint:
 		fmt.Printf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
 		if IdleRTT < ActiveRTT {
 			fmt.Println("[Smallest-Delay] Idle path has smaller path RTT, do migration")

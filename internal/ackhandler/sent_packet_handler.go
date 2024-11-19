@@ -436,8 +436,7 @@ skipUpdateRTT:
 	}
 
 	pnSpace.largestAcked = max(pnSpace.largestAcked, largestAcked)
-
-	if err := h.detectLostPackets(rcvTime, encLevel); err != nil {
+	if err := h.detectLostPackets(rcvTime, encLevel, true); err != nil {
 		return false, err
 	}
 	var acked1RTTPacket bool
@@ -684,7 +683,7 @@ func (h *sentPacketHandler) setLossDetectionTimer() {
 	}
 }
 
-func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.EncryptionLevel) error {
+func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.EncryptionLevel, fromAck bool) error {
 	pnSpace := h.getPacketNumberSpace(encLevel)
 	pnSpace.lossTime = time.Time{}
 
@@ -732,6 +731,7 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 			}
 			pnSpace.lossTime = lossTime
 		}
+		test := true
 		if packetLost {
 			pnSpace.history.DeclareLost(p.PacketNumber)
 			if !p.skippedPacket {
@@ -739,7 +739,10 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 				h.removeFromBytesInFlight(p)
 				h.queueFramesForRetransmission(p)
 				if !p.IsPathMTUProbePacket {
-					h.congestion.OnCongestionEvent(p.PacketNumber, p.Length, priorInFlight)
+					if !test {
+						fmt.Printf("detectLostPacket fromAck:%v\n", fromAck)
+						h.congestion.OnCongestionEvent(p.PacketNumber, p.Length, priorInFlight)
+					}
 				}
 				if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil {
 					h.ecnTracker.LostPacket(p.PacketNumber)
@@ -761,7 +764,7 @@ func (h *sentPacketHandler) OnLossDetectionTimeout() error {
 			h.tracer.LossTimerExpired(logging.TimerTypeACK, encLevel)
 		}
 		// Early retransmit or time loss detection
-		return h.detectLostPackets(time.Now(), encLevel)
+		return h.detectLostPackets(time.Now(), encLevel, false)
 	}
 
 	// PTO
