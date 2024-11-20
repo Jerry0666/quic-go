@@ -244,7 +244,6 @@ func (h *sentPacketHandler) SentPacketOnIdle(
 	size protocol.ByteCount,
 	isPathMTUProbePacket bool,
 ) {
-	fmt.Printf("[Packet] record packet sent on idle Path. packet number:%d\n", pn)
 	h.bytesSent += size
 
 	pnSpace := h.getPacketNumberSpace(encLevel)

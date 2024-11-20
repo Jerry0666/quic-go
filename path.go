@@ -185,7 +185,7 @@ func (p *Path) Run() error {
 	fmt.Println("[Path] run()")
 	for {
 		e := <-p.queue
-		fmt.Println("[Path] receive from queue")
+		ATSSSPrintln("[Path] receive from queue")
 		go func() {
 			err := p.SendConn.Write(e.buf.Data, e.gsoSize, e.ecn)
 			if err != nil {

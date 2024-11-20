@@ -533,9 +533,9 @@ func (s *connection) preSetup() {
 }
 
 func (s *connection) StartPMF() {
-	fmt.Println("[PMF]-----------------------------start measurement.")
+	ATSSSPrintln("[PMF]-----------------------------start measurement.")
 	s.UsingPath.ATSSSActivePath = true
-	go s.CheckAlive(s.UsingPath, 100*time.Millisecond, 1000)
+	go s.CheckAlive(s.UsingPath, time.Duration(testFrequency)*time.Millisecond, 1000)
 	var IdlePath *Path
 	for _, p := range s.pathMap {
 		if p != s.UsingPath {
@@ -543,13 +543,13 @@ func (s *connection) StartPMF() {
 		}
 	}
 	if IdlePath == nil {
-		fmt.Println("[PMF][error] can't find the idle path.")
+		ATSSSPrintln("[PMF][error] can't find the idle path.")
 		return
 	}
 	time.Sleep(500 * time.Millisecond)
-	go s.CheckAlive(IdlePath, 100*time.Millisecond, 1000)
+	go s.CheckAlive(IdlePath, time.Duration(testFrequency)*time.Millisecond, 1000)
 	if s.SteeringMode == SmallestDelay {
-		go s.ComparePathRTT(100 * time.Millisecond)
+		go s.ComparePathRTT(time.Duration(testFrequency) * time.Millisecond)
 	}
 
 }
@@ -563,7 +563,7 @@ func (s *connection) GetIdle() *Path {
 		}
 	}
 	if Idle == nil {
-		fmt.Println("[Error] can't find the connection idle path.")
+		ATSSSPrintln("[Error] can't find the connection idle path.")
 	}
 	return Idle
 }
@@ -588,21 +588,22 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 
 	i := 0
 	migrationCount := 0
+	timesPerSecond := 1000 / testFrequency
 	for {
 		ActiveRTT = s.UsingPath.RTT.SmoothedRTT().Microseconds()
 		// get idle path first
 		Idle = s.GetIdle()
 		IdleRTT = Idle.RTT.SmoothedRTT().Microseconds()
 		if IdleRTT < ActiveRTT {
-			fmt.Printf("[PMF] Idle path has the smaller RTT (%d < %d)\n", IdleRTT, ActiveRTT)
+			ATSSSPrintf("[PMF] Idle path has the smaller RTT (%d < %d)\n", IdleRTT, ActiveRTT)
 			// do the migration
 		}
 		if s.StartRecordRTT {
 			i++
-			if i%10 != 0 {
+			if i%timesPerSecond != 0 {
 				goto notPrint
 			}
-			j := i / 10
+			j := i / testFrequency
 			fmt.Fprintf(f, "%d: ", j)
 			if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
 				// Idle path is non3GPP
@@ -613,9 +614,9 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 			}
 		}
 	notPrint:
-		fmt.Printf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
+		ATSSSPrintf("[PathRTT] Idle:%d, Active:%d\n", IdleRTT, ActiveRTT)
 		if IdleRTT < ActiveRTT {
-			fmt.Println("[Smallest-Delay] Idle path has smaller path RTT, do migration")
+			ATSSSPrintln("[Smallest-Delay] Idle path has smaller path RTT, do migration")
 			fmt.Fprintf(f, "do the migration to [%s]\n", Idle.Rconn.LocalAddr().String())
 			s.Migration(Idle)
 			migrationCount++
@@ -664,7 +665,7 @@ runLoop:
 		// Confirm whether there is data to be sent on the idle path
 		select {
 		case <-s.IdlePathSend:
-			fmt.Println("receive idle path send signal, call the function")
+			ATSSSPrintln("receive idle path send signal, call the function")
 			s.sendOnIdlePath()
 		default:
 		}
@@ -1076,12 +1077,7 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 		}
 	}
 	fromOtherIP := p.otherIP
-	// if fromOtherIP {
-	// 	go func() {
-	// 		fmt.Println("[connection] s.remoteAddr <- p.remoteAddr.String()")
-	// 		s.remoteAddr <- p.remoteAddr.String()
-	// 	}()
-	// }
+
 	// make a test, if the conn id of the packet is differ than the conn id now using, transform the conn id.
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
 		s.closeLocal(err)
@@ -1415,32 +1411,22 @@ func (s *connection) handleFrames(
 		l, frame, err := s.frameParser.ParseNext(data, encLevel, s.version)
 		// check the frame
 		if otherIP {
-			fmt.Println("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
+			ATSSSPrintln("[handleFrames] it is from other IP, and not do the migration yet, check the frame.")
 
 			if !IsProbingFrame(frame) {
 				var path *Path
 				for _, p := range s.pathMap {
 					if p.receiveConnId.String() == destConnID.String() {
-						fmt.Printf("find the migration path, remote addr:%s\n", p.Remote.String())
+						ATSSSPrintf("find the migration path, remote addr:%s\n", p.Remote.String())
 						path = p
 					}
 				}
 				if path == s.UsingPath {
-					fmt.Println("[debug] Migration has been done!")
+					ATSSSPrintln("[debug] Migration has been done!")
 					goto Label1
 				}
-				fmt.Printf("Do the migration. destID:%s\n", destConnID.String())
-				fmt.Println(s.CheckStatus())
-
-				// remoteAddr := <-s.remoteAddr
-				// fmt.Println("[connection] remoteAddr := <-s.remoteAddr")
-				// fmt.Printf("[server] remote IP:%s\n", remoteAddr)
-				// path, ok := s.pathMap[remoteAddr]
-				// if !ok {
-				// 	fmt.Println("can't get the path")
-				// } else if path != nil {
-				// 	fmt.Println("[server] get the path!")
-				// }
+				ATSSSPrintf("Do the migration. destID:%s\n", destConnID.String())
+				ATSSSPrintln(s.CheckStatus())
 
 				s.Migration(path)
 			}
@@ -1505,7 +1491,7 @@ func IsProbingFrame(f wire.Frame) bool {
 	default:
 	}
 	if !IsProbe {
-		fmt.Println("find a non-Probing frame!")
+		ATSSSPrintln("find a non-Probing frame!")
 	}
 	return IsProbe
 }
@@ -1538,10 +1524,10 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 		err = s.handleStopSendingFrame(frame)
 	case *wire.PingFrame:
 	case *wire.PathChallengeFrame:
-		fmt.Println("receive PathChallenge")
+		ATSSSPrintln("receive PathChallenge")
 		s.handlePathChallengeFrame(frame, destConnID)
 	case *wire.PathResponseFrame:
-		fmt.Println("receive PathResponse")
+		ATSSSPrintln("receive PathResponse")
 		s.handlePathResponseFrame(frame, destConnID)
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
@@ -1567,12 +1553,11 @@ func (s *connection) handlePacket(p receivedPacket) {
 	// Make a test first
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		_, ok := s.pathMap[p.remoteAddr.String()]
-		fmt.Println("[server] get packet from other path")
+		ATSSSPrintln("[server] get packet from other path")
 		if !ok {
 			// server transport is nil
 			// modify to use Path structure
-			fmt.Printf("receive from new ip addr, origin: %s, now: %s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
-			fmt.Println("[server] create a new path and set the pathMap")
+			ATSSSPrintf("receive from new ip addr: %s\n", p.remoteAddr.String())
 			path := NewPath(nil, p.remoteAddr, false)
 			path.ServerSet(s.conn.GetRawConn(), p)
 			err := s.SetPathConnId(path)
@@ -1581,8 +1566,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 			}
 			s.pathMap[p.remoteAddr.String()] = path
 
-			// parse the packet ConnId
-			fmt.Println("Parse the packet ConnId, use 4 as ConnIDLen")
+			// parse the packet ConnId, use 4 as connID len.
 			connId, _ := wire.ParseConnectionID(p.data, 4)
 			fmt.Printf("path receive ConnId:%s, set it to path receiveConnId.\n", connId)
 			path.receiveConnId = &connId
@@ -1596,15 +1580,13 @@ func (s *connection) handlePacket(p receivedPacket) {
 	if s.perspective == protocol.PerspectiveServer && s.UsingPath == nil && s.conn.RemoteAddr().String() == p.remoteAddr.String() {
 		// check it is not long header packet
 		if !wire.IsLongHeaderPacket(p.data[0]) {
-			fmt.Println("[debug][server] Using path has not been set.")
+			ATSSSPrintln("[debug][server] Using path has not been set.")
 			path := NewPath(nil, p.remoteAddr, false)
 			path.ServerSet(s.conn.GetRawConn(), p)
-			fmt.Println("[debug][server] not set the ConnId.")
 
 			// parse the packet ConnId
-			fmt.Println("Parse the packet ConnId, use 4 as ConnIDLen")
 			connId, _ := wire.ParseConnectionID(p.data, 4)
-			fmt.Printf("path receive ConnId:%s, set it to path receiveConnId.\n", connId)
+			ATSSSPrintf("path receive ConnId:%s, set it to path receiveConnId.\n", connId)
 			path.receiveConnId = &connId
 			path.Status = PathStatusActive
 
@@ -1778,23 +1760,23 @@ func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, de
 }
 
 func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, destConnID protocol.ConnectionID) {
-	fmt.Printf("[connection] handle the path response. destConnID:%s\n", destConnID.String())
+	ATSSSPrintf("[connection] handle the path response. destConnID:%s\n", destConnID.String())
 	for _, path := range s.pathMap {
 		if path.receiveConnId != nil && path.receiveConnId.String() == destConnID.String() {
-			fmt.Printf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
+			ATSSSPrintf("Find the path, compare challenge, path: %x, packet: %x\n", path.challengeData, frame.Data)
 			if reflect.DeepEqual(path.challengeData, frame.Data) {
-				fmt.Println("Path validation success!")
+				ATSSSPrintln("Path validation success!")
 				if s.UsingPath != path {
 					now := time.Now()
 					RTTsimple := now.Sub(path.LastSendTime)
-					fmt.Printf("[RTT] idle path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
+					ATSSSPrintf("[RTT] idle path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
 					// set ack delay to 0
 					path.RTT.UpdateRTT(RTTsimple, 0*time.Microsecond, time.Now())
-					fmt.Printf("[RTT] smooth RTT: %d (microsecond)\n", path.RTT.SmoothedRTT()/time.Microsecond)
+					ATSSSPrintf("[RTT] smooth RTT: %d (microsecond)\n", path.RTT.SmoothedRTT()/time.Microsecond)
 				} else {
 					now := time.Now()
 					RTTsimple := now.Sub(path.LastSendTime)
-					fmt.Printf("[RTT] active path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
+					ATSSSPrintf("[RTT] active path RTT simple: %d (microsecond)\n", RTTsimple/time.Microsecond)
 					// set ack delay to 0
 					path.RTT.UpdateRTT(RTTsimple, 0*time.Microsecond, time.Now())
 				}
@@ -1805,9 +1787,7 @@ func (s *connection) handlePathResponseFrame(frame *wire.PathResponseFrame, dest
 				if path.Status != PathStatusActive {
 					path.Status = PathStatusAlive
 				}
-				fmt.Println(s.CheckStatus())
-			} else {
-				fmt.Println("Path validation failure!")
+				ATSSSPrintln(s.CheckStatus())
 			}
 		}
 	}
@@ -2287,7 +2267,7 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 
 	i := 0
 	if equal(empty, path.challengeData[:]) {
-		fmt.Println("[PMF] path challenge is not set, set it.")
+		ATSSSPrintln("[PMF] path challenge is not set, set it.")
 		challenge := make([]byte, 8)
 		rand.Read(challenge)
 		path.challengeData = [8]byte(challenge)
@@ -2296,7 +2276,7 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 	addr := path.Rconn.LocalAddr().String()
 
 	for {
-		fmt.Printf("[%s][PMF] CheckAlive, IsIdle:%v\n", addr, IsIdle)
+		ATSSSPrintf("[%s][PMF] CheckAlive, IsIdle:%v\n", addr, IsIdle)
 		// may need to change challenge data
 		s.SendPathChallenge(path)
 		i++
@@ -2311,7 +2291,7 @@ func (s *connection) CheckAlive(path *Path, t time.Duration, number int) {
 
 // send the challenge on idle path, should be call on receive the signal.
 func (s *connection) sendOnIdlePath() {
-	fmt.Println("[PMF] sendOnIdlePath")
+	ATSSSPrintln("[PMF] sendOnIdlePath")
 	now := time.Now()
 	// find the idle path
 	var idle *Path
@@ -2322,7 +2302,7 @@ func (s *connection) sendOnIdlePath() {
 	}
 
 	if idle == nil {
-		fmt.Println("[err] path has not been record yet.")
+		ATSSSPrintln("[err] path has not been record yet.")
 		return
 	}
 	// pack challenge packet and sent
@@ -2331,21 +2311,20 @@ func (s *connection) sendOnIdlePath() {
 	ecn := s.sentPacketHandler.ECNMode(true)
 	p, err := s.packer.PackPathChallenge(buf, maxSize, s.version, idle)
 	if err != nil {
-		fmt.Printf("err happen:%v\n", err)
+		ATSSSPrintf("err happen:%v\n", err)
 	}
 	p.UsingIdle = true
 	s.registerPackedShortHeaderPacket(p, ecn, now)
-	fmt.Println("[PMF] idle path send!")
+	ATSSSPrintln("[PMF] idle path send!")
 	// record the path challenge send time
 	idle.LastSendTime = time.Now()
 	idle.Send(buf, uint16(maxSize), ecn)
-	fmt.Println("[PMF] idle path send the challenge packet")
+	ATSSSPrintln("[PMF] idle path send the challenge packet")
 }
 
 func (s *connection) SendPathChallenge(path *Path) error {
 	addr := path.Rconn.LocalAddr().String()
-	fmt.Printf("[%s][Path]SendPathChallenge!\n", addr)
-	fmt.Printf("time:%v\n", time.Now())
+	ATSSSPrintf("[%s][Path]SendPathChallenge!\n", addr)
 
 	if path != nil {
 		if path != s.UsingPath {
@@ -2358,7 +2337,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 			success := false
 			for i := 0; i < 5; i++ {
 				if path == s.UsingPath {
-					fmt.Printf("[%s][PMF] active path send challenge.\n", addr)
+					ATSSSPrintf("[%s][PMF] active path send challenge.\n", addr)
 					path.LastSendTime = time.Now()
 					s.queueControlFrame(&wire.PathChallengeFrame{Data: path.challengeData})
 				} else {
@@ -2367,30 +2346,30 @@ func (s *connection) SendPathChallenge(path *Path) error {
 				}
 				time.Sleep(20 * time.Millisecond)
 				if path.ATSSSActivePath && path.Status == PathStatusAlive && s.SteeringMode == ActiveStandy {
-					fmt.Printf("[%s]ATSSS active path become alive, migration back!\n", addr)
+					ATSSSPrintf("[%s]ATSSS active path become alive, migration back!\n", addr)
 					s.Migration(path)
 					s.sentPacketHandler.RTTcopy(path.RTT)
 				}
 				if path.Status == PathStatusAlive || path.Status == PathStatusActive {
-					fmt.Printf("[%s]Path validation success in %d times.\n", addr, i+1)
+					ATSSSPrintf("[%s]Path validation success in %d times.\n", addr, i+1)
 					success = true
 					break
 				} else if path.Status == PathStatusProbing || path.Status == PathStatusActiveProbing {
-					fmt.Printf("[%s][PMF] PathChallenge continue in %d times.\n", addr, i+1)
+					ATSSSPrintf("[%s][PMF] PathChallenge continue in %d times.\n", addr, i+1)
 					continue
 				}
 			}
 			if !success {
-				fmt.Printf("[%s]Path validation failure\n", addr)
+				ATSSSPrintf("[%s]Path validation failure\n", addr)
 				if s.SteeringMode == SmallestDelay {
 					panic("path failure")
 				}
 				if path == s.UsingPath {
-					fmt.Println("[PMF] active path dead.")
+					ATSSSPrintln("[PMF] active path dead.")
 				}
 				path.Status = PathStatusDead
-				fmt.Println("[PMF] check all path")
-				fmt.Println(s.CheckStatus())
+				ATSSSPrintln("[PMF] check all path")
+				ATSSSPrintln(s.CheckStatus())
 				if path != s.UsingPath {
 					return
 				}
@@ -2399,13 +2378,13 @@ func (s *connection) SendPathChallenge(path *Path) error {
 				var activePath *Path
 				for _, p := range s.pathMap {
 					if p.Status == PathStatusAlive {
-						fmt.Println("[PMF] find other active path.")
+						ATSSSPrintln("[PMF] find other active path.")
 						activePath = p
 						break
 					}
 				}
 				if activePath == nil {
-					fmt.Println("[PMF] all path die!")
+					ATSSSPrintln("[PMF] all path die!")
 				} else {
 					s.Migration(activePath)
 					s.sentPacketHandler.RTTcopy(activePath.RTT)
@@ -2415,7 +2394,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 		}()
 
 	} else {
-		fmt.Println("[error] path is nil")
+		ATSSSPrintln("[error] path is nil")
 	}
 
 	return nil
