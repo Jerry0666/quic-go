@@ -10,9 +10,9 @@ const (
 )
 
 // How many time (millisecond) to do a test.
-const testFrequency int = 1000
+const testFrequency int = 100
 
-const ATSSSLog bool = true
+const ATSSSLog bool = false
 
 func ATSSSPrintf(format string, args ...interface{}) {
 	if ATSSSLog {

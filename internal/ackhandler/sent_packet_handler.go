@@ -405,10 +405,6 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 	if len(ackedPackets) > 0 {
 		if p := ackedPackets[len(ackedPackets)-1]; p.PacketNumber == ack.LargestAcked() {
 			if p.SendOnIdlePath {
-				fmt.Printf("[Packet] this packet (%d) is from idle path, don't update the RTT.\n", p.PacketNumber)
-				if h.LastAckFromIdle {
-					fmt.Println("[Packet] Continuously receiving acks from the idle path!")
-				}
 				h.LastAckFromIdle = true
 				goto skipUpdateRTT
 			}

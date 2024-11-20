@@ -603,7 +603,7 @@ func (s *connection) ComparePathRTT(t time.Duration) {
 			if i%timesPerSecond != 0 {
 				goto notPrint
 			}
-			j := i / testFrequency
+			j := i / timesPerSecond
 			fmt.Fprintf(f, "%d: ", j)
 			if Idle.Rconn.LocalAddr().String() == "172.16.0.3:8000" {
 				// Idle path is non3GPP
@@ -1052,13 +1052,15 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 		wire.LogShortHeader(s.logger, destConnID, pn, pnLen, keyPhase)
 	}
 
-	if s.receivedPacketHandler.IsPotentiallyDuplicate(pn, protocol.Encryption1RTT) {
-		s.logger.Debugf("Dropping (potentially) duplicate packet.")
-		if s.tracer != nil && s.tracer.DroppedPacket != nil {
-			s.tracer.DroppedPacket(logging.PacketType1RTT, pn, p.Size(), logging.PacketDropDuplicate)
-		}
-		return false
-	}
+	// because path delay may be different, may receive out-of-order packets, don't do duplicate check.
+
+	// if s.receivedPacketHandler.IsPotentiallyDuplicate(pn, protocol.Encryption1RTT) {
+	// 	s.logger.Debugf("Dropping (potentially) duplicate packet.")
+	// 	if s.tracer != nil && s.tracer.DroppedPacket != nil {
+	// 		s.tracer.DroppedPacket(logging.PacketType1RTT, pn, p.Size(), logging.PacketDropDuplicate)
+	// 	}
+	// 	return false
+	// }
 
 	var log func([]logging.Frame)
 	if s.tracer != nil && s.tracer.ReceivedShortHeaderPacket != nil {
@@ -1080,8 +1082,10 @@ func (s *connection) handleShortHeaderPacket(p receivedPacket, destConnID protoc
 
 	// make a test, if the conn id of the packet is differ than the conn id now using, transform the conn id.
 	if err := s.handleUnpackedShortHeaderPacket(destConnID, pn, data, p.ecn, p.rcvTime, log, fromOtherIP); err != nil {
-		s.closeLocal(err)
-		return false
+		// Need to check err type. No matter what, don't close the connection.
+
+		// s.closeLocal(err)
+		// return false
 	}
 	return true
 }
