@@ -59,8 +59,11 @@ type Path struct {
 	// for the send
 	SendConn sendConn
 
-	// conn id
+	// send conn id
 	connId protocol.ConnectionID
+
+	// Use to indicate packet number space
+	pathId int
 
 	challengeData [8]byte
 	// receive conn id

@@ -2318,6 +2318,7 @@ func (s *connection) sendOnIdlePath() {
 		ATSSSPrintf("err happen:%v\n", err)
 	}
 	p.UsingIdle = true
+	p.UsingPath = idle
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	ATSSSPrintln("[PMF] idle path send!")
 	// record the path challenge send time
@@ -2414,6 +2415,11 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	}
 	ecn := s.sentPacketHandler.ECNMode(true)
 	now := time.Now()
+	if path != s.UsingPath {
+		p.UsingIdle = true
+	}
+	p.UsingPath = path
+
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	if path != nil {
 		if path == s.UsingPath {
@@ -2520,10 +2526,30 @@ func (s *connection) RecordPath(p *Path) {
 	fmt.Println("record the Path")
 	fmt.Printf("local addr:%s\n", p.Rconn.LocalAddr().String())
 	fmt.Printf("remote addr:%s\n", p.Remote.String())
+	if p == s.UsingPath {
+		fmt.Println("[Path] record connection Using path, set this pathID to 1")
+		p.pathId = 1
+	} else {
+		p.pathId = 2
+	}
 	_, ok := s.pathMap[p.Rconn.LocalAddr().String()]
 	if !ok {
 		fmt.Println("path has not been record, record it.")
 		s.pathMap[p.Rconn.LocalAddr().String()] = p
+	}
+	if len(s.pathMap) == 2 {
+		fmt.Println("[Path] record path to packetPacker.")
+		// Using path is path 1
+		path1 := s.UsingPath
+		var path2 *Path
+		for _, p := range s.pathMap {
+			if p != path1 {
+				path2 = p
+			}
+		}
+		fmt.Printf("Path1 addr:%s Path2 addr:%s\n", path1.Rconn.LocalAddr().String(), path2.Rconn.LocalAddr().String())
+		s.packer.SetPathArray(path1, path2)
+		fmt.Println(s.CheckStatus())
 	}
 	fmt.Println()
 }
@@ -2745,8 +2771,16 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	if p.Ack != nil {
 		largestAcked = p.Ack.LargestAcked()
 	}
+	// get the idle path and use it to drive packet number space
+	level := protocol.Encryption1RTT
+	if p.UsingPath != nil {
+		fmt.Printf("[debug] path id:%d\n", p.UsingPath.pathId)
+		if p.UsingPath.pathId == 2 {
+			level = protocol.EncryptionPath2
+		}
+	}
 	if p.UsingIdle {
-		s.sentPacketHandler.SentPacketOnIdle(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+		s.sentPacketHandler.SentPacketOnIdle(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, level, ecn, p.Length, p.IsPathMTUProbePacket)
 	} else {
 		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
 	}

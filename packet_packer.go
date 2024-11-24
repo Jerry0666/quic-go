@@ -30,6 +30,7 @@ type packer interface {
 
 	PackPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, path *Path) (shortHeaderPacket, error)
 	PackPathResponse(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, challenge []byte, path *Path) (shortHeaderPacket, error)
+	SetPathArray(path1 *Path, path2 *Path)
 }
 
 type sealer interface {
@@ -67,6 +68,7 @@ type shortHeaderPacket struct {
 
 	// indicate which path is using
 	UsingIdle bool
+	UsingPath *Path
 }
 
 func (p *shortHeaderPacket) IsAckEliciting() bool { return ackhandler.HasAckElicitingFrames(p.Frames) }
@@ -140,6 +142,9 @@ type packetPacker struct {
 	rand                rand.Rand
 
 	numNonAckElicitingAcks int
+	// Used to separate different path packet number space.
+	// Use conn id to find the path and drive corresponding packet number.
+	pathArray []*Path
 }
 
 var _ packer = &packetPacker{}
@@ -172,7 +177,13 @@ func newPacketPacker(
 		acks:                acks,
 		rand:                *rand.New(rand.NewSource(binary.BigEndian.Uint64(b[:]))),
 		pnManager:           packetNumberManager,
+		pathArray:           make([]*Path, 2),
 	}
+}
+
+func (p *packetPacker) SetPathArray(path1 *Path, path2 *Path) {
+	p.pathArray[0] = path1
+	p.pathArray[1] = path2
 }
 
 // PackConnectionClose packs a packet that closes the connection with a transport error.
@@ -482,11 +493,13 @@ func (p *packetPacker) PackPathChallenge(buf *packetBuffer, maxPacketSize protoc
 }
 
 func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, path *Path) (shortHeaderPacket, error) {
+	fmt.Println("[debug] appendPathChallenge")
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
+	// [todo] need to use path to determine its path packet number space.
+	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.EncryptionPath2)
 	connID := path.connId
 
 	var pl payload
@@ -513,7 +526,13 @@ func (p *packetPacker) appendPathResponse(buf *packetBuffer, maxPacketSize proto
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
+	fmt.Printf("pathId:%d\n", path.pathId)
+	level := protocol.Encryption1RTT
+	if path.pathId == 2 {
+		level = protocol.EncryptionPath2
+	}
+	pn, pnLen := p.pnManager.PeekPacketNumber(level)
+	fmt.Printf("pn:%d\n", pn)
 	connID := path.connId
 	var pl payload
 	p_re := &wire.PathResponseFrame{Data: [8]byte(challenge)}
@@ -893,7 +912,17 @@ func (p *packetPacker) appendShortHeaderPacket(
 	raw = p.encryptPacket(raw, sealer, pn, payloadOffset, protocol.ByteCount(pnLen))
 	buffer.Data = buffer.Data[:len(buffer.Data)+len(raw)]
 
-	if newPN := p.pnManager.PopPacketNumber(protocol.Encryption1RTT); newPN != pn {
+	// Use connid to determine path packet number space
+	var level protocol.EncryptionLevel
+	if p.pathArray[0] == nil {
+		level = protocol.Encryption1RTT
+	} else if p.pathArray[0].connId.String() == connID.String() {
+		level = protocol.Encryption1RTT
+	} else {
+		level = protocol.EncryptionPath2
+	}
+
+	if newPN := p.pnManager.PopPacketNumber(level); newPN != pn {
 		return shortHeaderPacket{}, fmt.Errorf("packetPacker BUG: Peeked and Popped packet numbers do not match: expected %d, got %d", pn, newPN)
 	}
 	return shortHeaderPacket{

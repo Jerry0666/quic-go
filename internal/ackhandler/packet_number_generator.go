@@ -1,6 +1,8 @@
 package ackhandler
 
 import (
+	"fmt"
+
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
 )
@@ -11,6 +13,34 @@ type packetNumberGenerator interface {
 	// It reports if the packet number (before the one just popped) was skipped.
 	// It never skips more than one packet number in a row.
 	Pop() (skipped bool, _ protocol.PacketNumber)
+}
+
+// Used for path2 packetNumber space
+type RangedPacketNumberGenerator struct {
+	next          protocol.PacketNumber
+	validSmallest protocol.PacketNumber
+	validLargest  protocol.PacketNumber
+}
+
+func newRangedPacketNumberGenerator(min protocol.PacketNumber, max protocol.PacketNumber) packetNumberGenerator {
+	return &RangedPacketNumberGenerator{
+		next:          min + 1,
+		validSmallest: min,
+		validLargest:  max,
+	}
+}
+
+func (p *RangedPacketNumberGenerator) Peek() protocol.PacketNumber {
+	return p.next
+}
+
+func (p *RangedPacketNumberGenerator) Pop() (bool, protocol.PacketNumber) {
+	next := p.next
+	p.next++
+	if p.next > p.validLargest {
+		fmt.Println("[Pn space] packet number range is full.")
+	}
+	return false, next
 }
 
 type sequentialPacketNumberGenerator struct {

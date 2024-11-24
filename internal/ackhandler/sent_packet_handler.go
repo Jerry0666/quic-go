@@ -39,6 +39,7 @@ type packetNumberSpace struct {
 }
 
 func newPacketNumberSpace(initialPN protocol.PacketNumber, skipPNs bool) *packetNumberSpace {
+	fmt.Println("[Ack] newPacketNumberSpace")
 	var pns packetNumberGenerator
 	if skipPNs {
 		pns = newSkippingPacketNumberGenerator(initialPN, protocol.SkipPacketInitialPeriod, protocol.SkipPacketMaxPeriod)
@@ -53,10 +54,22 @@ func newPacketNumberSpace(initialPN protocol.PacketNumber, skipPNs bool) *packet
 	}
 }
 
+func newPath2PacketNumberSpace() *packetNumberSpace {
+	fmt.Println("[Pn Space] create Path2 packet number space from 10001 to 20000")
+	pns := newRangedPacketNumberGenerator(10000, 20000)
+	return &packetNumberSpace{
+		history:      newSentPacketHistory(),
+		pns:          pns,
+		largestSent:  protocol.InvalidPacketNumber,
+		largestAcked: protocol.InvalidPacketNumber,
+	}
+}
+
 type sentPacketHandler struct {
 	initialPackets   *packetNumberSpace
 	handshakePackets *packetNumberSpace
 	appDataPackets   *packetNumberSpace
+	path2Packets     *packetNumberSpace
 
 	// Do we know that the peer completed address validation yet?
 	// Always true for the server.
@@ -129,12 +142,14 @@ func newSentPacketHandler(
 		tracer,
 	)
 
+	fmt.Println("[Ack] create sentPacketHandler")
 	h := &sentPacketHandler{
 		peerCompletedAddressValidation: pers == protocol.PerspectiveServer,
 		peerAddressValidated:           pers == protocol.PerspectiveClient || clientAddressValidated,
 		initialPackets:                 newPacketNumberSpace(initialPN, false),
 		handshakePackets:               newPacketNumberSpace(0, false),
 		appDataPackets:                 newPacketNumberSpace(0, true),
+		path2Packets:                   newPath2PacketNumberSpace(),
 		rttStats:                       rttStats,
 		congestion:                     congestion,
 		perspective:                    pers,
@@ -366,6 +381,8 @@ func (h *sentPacketHandler) getPacketNumberSpace(encLevel protocol.EncryptionLev
 		return h.handshakePackets
 	case protocol.Encryption0RTT, protocol.Encryption1RTT:
 		return h.appDataPackets
+	case protocol.EncryptionPath2:
+		return h.path2Packets
 	default:
 		panic("invalid packet number space")
 	}

@@ -10,7 +10,7 @@ const (
 )
 
 // How many time (millisecond) to do a test.
-const testFrequency int = 100
+const testFrequency int = 1000
 
 const ATSSSLog bool = false
 
