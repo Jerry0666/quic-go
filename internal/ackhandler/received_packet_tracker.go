@@ -24,6 +24,7 @@ func newReceivedPacketTracker() *receivedPacketTracker {
 	return &receivedPacketTracker{packetHistory: *newReceivedPacketHistory()}
 }
 
+// Add PN to range, these packets will be acked later.
 func (h *receivedPacketTracker) ReceivedPacket(pn protocol.PacketNumber, ecn protocol.ECN, rcvTime time.Time, ackEliciting bool) error {
 	if isNew := h.packetHistory.ReceivedPacket(pn); !isNew {
 		return fmt.Errorf("recevedPacketTracker BUG: ReceivedPacket called for old / duplicate packet %d", pn)
@@ -102,6 +103,9 @@ func newAppDataReceivedPacketTracker(logger utils.Logger) *appDataReceivedPacket
 }
 
 func (h *appDataReceivedPacketTracker) ReceivedPacket(pn protocol.PacketNumber, ecn protocol.ECN, rcvTime time.Time, ackEliciting bool) error {
+	if pn > 10000 {
+		fmt.Println("[PacketTracker] ReceivedPacket on path2.")
+	}
 	if err := h.receivedPacketTracker.ReceivedPacket(pn, ecn, rcvTime, ackEliciting); err != nil {
 		return err
 	}
