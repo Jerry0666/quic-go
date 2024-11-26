@@ -1387,7 +1387,6 @@ func (s *connection) handleUnpackedShortHeaderPacket(
 	s.lastPacketReceivedTime = rcvTime
 	s.firstAckElicitingPacketAfterIdleSentTime = time.Time{}
 	s.keepAlivePingSent = false
-
 	isAckEliciting, err := s.handleFrames(data, destConnID, protocol.Encryption1RTT, log, otherIP)
 	if err != nil {
 		return err
@@ -1500,6 +1499,14 @@ func IsProbingFrame(f wire.Frame) bool {
 	return IsProbe
 }
 
+func (s *connection) SelectEncryptionLevelByPN(pn protocol.PacketNumber, encLevel protocol.EncryptionLevel) protocol.EncryptionLevel {
+	if pn > 10000 {
+		return protocol.EncryptionPath2
+	} else {
+		return encLevel
+	}
+}
+
 func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel, destConnID protocol.ConnectionID) error {
 	// destConnID should not be empty
 	var err error
@@ -1510,7 +1517,11 @@ func (s *connection) handleFrame(f wire.Frame, encLevel protocol.EncryptionLevel
 	case *wire.StreamFrame:
 		err = s.handleStreamFrame(frame)
 	case *wire.AckFrame:
-		err = s.handleAckFrame(frame, encLevel)
+		ack, _ := f.(*wire.AckFrame)
+		largestPN := ack.LargestAcked()
+		// use PN to select encryption level
+		level := s.SelectEncryptionLevelByPN(largestPN, encLevel)
+		err = s.handleAckFrame(frame, level)
 	case *wire.ConnectionCloseFrame:
 		s.handleConnectionCloseFrame(frame)
 	case *wire.ResetStreamFrame:
@@ -2774,7 +2785,6 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	// get the idle path and use it to drive packet number space
 	level := protocol.Encryption1RTT
 	if p.UsingPath != nil {
-		fmt.Printf("[debug] path id:%d\n", p.UsingPath.pathId)
 		if p.UsingPath.pathId == 2 {
 			level = protocol.EncryptionPath2
 		}

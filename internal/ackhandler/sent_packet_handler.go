@@ -115,6 +115,9 @@ type sentPacketHandler struct {
 
 	tracer *logging.ConnectionTracer
 	logger utils.Logger
+
+	// Indicate the connection is using Path2
+	Path2Active bool
 }
 
 var (
@@ -155,6 +158,7 @@ func newSentPacketHandler(
 		perspective:                    pers,
 		tracer:                         tracer,
 		logger:                         logger,
+		Path2Active:                    false,
 	}
 	if enableECN {
 		h.enableECN = true
@@ -394,6 +398,9 @@ func (h *sentPacketHandler) RTTcopy(s *utils.RTTStats) {
 }
 
 func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.EncryptionLevel, rcvTime time.Time) (bool /* contained 1-RTT packet */, error) {
+	if encLevel == protocol.EncryptionPath2 {
+		fmt.Println("[Ack] ReceivedAck for path2.")
+	}
 	pnSpace := h.getPacketNumberSpace(encLevel)
 
 	largestAcked := ack.LargestAcked()
@@ -419,6 +426,7 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 		return false, err
 	}
 	// update the RTT, if the largest acked is newly acknowledged
+	// [todo] add a new RTTstat
 	if len(ackedPackets) > 0 {
 		if p := ackedPackets[len(ackedPackets)-1]; p.PacketNumber == ack.LargestAcked() {
 			if p.SendOnIdlePath {
@@ -716,6 +724,7 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 
 		var packetLost bool
 		if p.SendTime.Before(lostSendTime) {
+			fmt.Println("[Lost] due to time too long")
 			packetLost = true
 			if !p.skippedPacket {
 				if h.logger.Debug() {
@@ -726,6 +735,9 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 				}
 			}
 		} else if pnSpace.largestAcked >= p.PacketNumber+packetThreshold {
+			if encLevel == protocol.EncryptionPath2 {
+				fmt.Println("[Lost] due to packet receive out of order.")
+			}
 			packetLost = true
 			if !p.skippedPacket {
 				if h.logger.Debug() {
@@ -742,8 +754,11 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 				h.logger.Debugf("\tsetting loss timer for packet %d (%s) to %s (in %s)", p.PacketNumber, encLevel, lossDelay, lossTime)
 			}
 			pnSpace.lossTime = lossTime
+			if encLevel == protocol.EncryptionPath2 {
+				fmt.Printf("[Lost] set path2 loss time: %s\n", lossTime.String())
+			}
 		}
-		test := true
+
 		if packetLost {
 			pnSpace.history.DeclareLost(p.PacketNumber)
 			if !p.skippedPacket {
@@ -751,10 +766,17 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 				h.removeFromBytesInFlight(p)
 				h.queueFramesForRetransmission(p)
 				if !p.IsPathMTUProbePacket {
-					if !test {
-						fmt.Printf("detectLostPacket fromAck:%v\n", fromAck)
+					if encLevel == protocol.EncryptionPath2 && h.Path2Active {
+						fmt.Println("[Lost] Path2 congestion happen")
 						h.congestion.OnCongestionEvent(p.PacketNumber, p.Length, priorInFlight)
+					} else if encLevel == protocol.Encryption1RTT && !h.Path2Active {
+						fmt.Println("[Lost] Path1 congestion happen")
+						h.congestion.OnCongestionEvent(p.PacketNumber, p.Length, priorInFlight)
+					} else {
+						fmt.Println("[Lost] Idle path congestion, don't handle it.")
 					}
+				} else {
+					fmt.Println("[Lost] MTUProbePacket lost")
 				}
 				if encLevel == protocol.Encryption1RTT && h.ecnTracker != nil {
 					h.ecnTracker.LostPacket(p.PacketNumber)

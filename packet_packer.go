@@ -476,6 +476,7 @@ func (p *packetPacker) appendPacket(buf *packetBuffer, onlyAck bool, maxPacketSi
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
+	// [todo] need to use connID to determine its path packet number space.
 	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
@@ -492,14 +493,19 @@ func (p *packetPacker) PackPathChallenge(buf *packetBuffer, maxPacketSize protoc
 	return p.appendPathChallenge(buf, maxPacketSize, v, path)
 }
 
+// [todo] finish this function
+func (p *packetPacker) ChooseEncryptionLevelByPath(path *Path) protocol.EncryptionLevel {
+	return protocol.EncryptionPath2
+}
+
 func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, path *Path) (shortHeaderPacket, error) {
-	fmt.Println("[debug] appendPathChallenge")
 	sealer, err := p.cryptoSetup.Get1RTTSealer()
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	// [todo] need to use path to determine its path packet number space.
-	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.EncryptionPath2)
+	// Use path to determine its path packet number space.
+	level := p.ChooseEncryptionLevelByPath(path)
+	pn, pnLen := p.pnManager.PeekPacketNumber(level)
 	connID := path.connId
 
 	var pl payload
