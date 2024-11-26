@@ -41,6 +41,7 @@ type payload struct {
 	streamFrames []ackhandler.StreamFrame
 	frames       []ackhandler.Frame
 	ack          *wire.AckFrame
+	path2Ack     *wire.AckFrame
 	length       protocol.ByteCount
 }
 
@@ -645,7 +646,7 @@ func (p *packetPacker) maybeGetAppDataPacket(maxPayloadSize protocol.ByteCount, 
 
 	// check if we have anything to send
 	if len(pl.frames) == 0 && len(pl.streamFrames) == 0 {
-		if pl.ack == nil {
+		if pl.ack == nil && pl.path2Ack == nil {
 			return payload{}
 		}
 		// the packet only contains an ACK
@@ -679,6 +680,15 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	if ackAllowed {
 		if ack := p.acks.GetAckFrame(protocol.Encryption1RTT, !hasRetransmission && !hasData); ack != nil {
 			pl.ack = ack
+			pl.length += ack.Length(v)
+			hasAck = true
+		}
+	}
+
+	// get path2 ack
+	if ackAllowed {
+		if ack := p.acks.GetAckFrame(protocol.EncryptionPath2, !hasRetransmission && !hasData); ack != nil {
+			pl.path2Ack = ack
 			pl.length += ack.Length(v)
 			hasAck = true
 		}
@@ -951,6 +961,13 @@ func (p *packetPacker) appendPacketPayload(raw []byte, pl payload, paddingLen pr
 	if pl.ack != nil {
 		var err error
 		raw, err = pl.ack.Append(raw, v)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if pl.path2Ack != nil {
+		var err error
+		raw, err = pl.path2Ack.Append(raw, v)
 		if err != nil {
 			return nil, err
 		}

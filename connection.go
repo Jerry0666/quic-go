@@ -1391,7 +1391,13 @@ func (s *connection) handleUnpackedShortHeaderPacket(
 	if err != nil {
 		return err
 	}
-	return s.receivedPacketHandler.ReceivedPacket(pn, ecn, protocol.Encryption1RTT, rcvTime, isAckEliciting)
+	// should use packet number to determine Encryption level.
+	level := protocol.Encryption1RTT
+	if pn > 10000 {
+		// second path PN range
+		level = protocol.EncryptionPath2
+	}
+	return s.receivedPacketHandler.ReceivedPacket(pn, ecn, level, rcvTime, isAckEliciting)
 }
 
 func (s *connection) handleFrames(
@@ -1617,7 +1623,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 
 	if s.perspective == protocol.PerspectiveServer && s.conn.RemoteAddr().String() != p.remoteAddr.String() {
 		p.otherIP = true
-		fmt.Printf("is from other IP. conn remoteAddr:%s, packet remoteAddr:%s\n", s.conn.RemoteAddr().String(), p.remoteAddr.String())
+		ATSSSPrintf("is from other IP. Packet remoteAddr:%s\n", p.remoteAddr.String())
 	}
 
 	// Discard packets once the amount of queued packets is larger than
@@ -1748,13 +1754,13 @@ func (s *connection) handleStopSendingFrame(frame *wire.StopSendingFrame) error 
 }
 
 func (s *connection) handlePathChallengeFrame(frame *wire.PathChallengeFrame, destConnID protocol.ConnectionID) {
-	fmt.Println(s.CheckStatus())
+	ATSSSPrintln(s.CheckStatus())
 	if s.perspective == protocol.PerspectiveServer {
-		fmt.Printf("destConnID:%s\n", destConnID.String())
+		ATSSSPrintf("destConnID:%s\n", destConnID.String())
 		var path *Path
 		for _, p := range s.pathMap {
 			if p.receiveConnId.String() == destConnID.String() {
-				fmt.Printf("find the path, this challenge is from %s\n", p.Remote.String())
+				ATSSSPrintf("find the path, this challenge is from %s\n", p.Remote.String())
 				path = p
 				break
 			}
@@ -2417,7 +2423,7 @@ func (s *connection) SendPathChallenge(path *Path) error {
 }
 
 func (s *connection) SendPathResponse(b []byte, path *Path) error {
-	fmt.Println("SendPathResponse!!!")
+	ATSSSPrintln("SendPathResponse!!!")
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
 	p, err := s.packer.PackPathResponse(buf, maxSize, s.version, b, path)
@@ -2434,10 +2440,8 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	s.registerPackedShortHeaderPacket(p, ecn, now)
 	if path != nil {
 		if path == s.UsingPath {
-			fmt.Println("queue path receive frame")
 			s.queueControlFrame(&wire.PathResponseFrame{Data: [8]byte(b)})
 		} else {
-			fmt.Println("use path to send")
 			path.Send(buf, uint16(maxSize), ecn)
 		}
 	} else {

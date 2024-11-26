@@ -15,6 +15,7 @@ type receivedPacketHandler struct {
 	initialPackets   *receivedPacketTracker
 	handshakePackets *receivedPacketTracker
 	appDataPackets   appDataReceivedPacketTracker
+	path2DataPackets appDataReceivedPacketTracker
 
 	lowest1RTTPacket protocol.PacketNumber
 }
@@ -27,6 +28,7 @@ func newReceivedPacketHandler(sentPackets sentPacketTracker, logger utils.Logger
 		initialPackets:   newReceivedPacketTracker(),
 		handshakePackets: newReceivedPacketTracker(),
 		appDataPackets:   *newAppDataReceivedPacketTracker(logger),
+		path2DataPackets: *newAppDataReceivedPacketTracker(logger),
 		lowest1RTTPacket: protocol.InvalidPacketNumber,
 	}
 }
@@ -62,6 +64,11 @@ func (h *receivedPacketHandler) ReceivedPacket(
 			return err
 		}
 		h.appDataPackets.IgnoreBelow(h.sentPackets.GetLowestPacketNotConfirmedAcked())
+		return nil
+	case protocol.EncryptionPath2:
+		if err := h.path2DataPackets.ReceivedPacket(pn, ecn, rcvTime, ackEliciting); err != nil {
+			return err
+		}
 		return nil
 	default:
 		panic(fmt.Sprintf("received packet with unknown encryption level: %s", encLevel))
@@ -102,6 +109,8 @@ func (h *receivedPacketHandler) GetAckFrame(encLevel protocol.EncryptionLevel, o
 		return nil
 	case protocol.Encryption1RTT:
 		return h.appDataPackets.GetAckFrame(onlyIfQueued)
+	case protocol.EncryptionPath2:
+		return h.path2DataPackets.GetAckFrame(onlyIfQueued)
 	default:
 		// 0-RTT packets can't contain ACK frames
 		return nil
