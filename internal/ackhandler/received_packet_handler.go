@@ -64,6 +64,7 @@ func (h *receivedPacketHandler) ReceivedPacket(
 			return err
 		}
 		h.appDataPackets.IgnoreBelow(h.sentPackets.GetLowestPacketNotConfirmedAcked())
+		h.path2DataPackets.IgnoreBelow(h.sentPackets.GetPath2LowestPacketNotConfirmedAcked())
 		return nil
 	case protocol.EncryptionPath2:
 		if err := h.path2DataPackets.ReceivedPacket(pn, ecn, rcvTime, ackEliciting); err != nil {

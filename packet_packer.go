@@ -59,6 +59,7 @@ type shortHeaderPacket struct {
 	Frames               []ackhandler.Frame
 	StreamFrames         []ackhandler.StreamFrame
 	Ack                  *wire.AckFrame
+	Path2Ack             *wire.AckFrame
 	Length               protocol.ByteCount
 	IsPathMTUProbePacket bool
 
@@ -950,6 +951,7 @@ func (p *packetPacker) appendShortHeaderPacket(
 		StreamFrames:         pl.streamFrames,
 		Frames:               pl.frames,
 		Ack:                  pl.ack,
+		Path2Ack:             pl.path2Ack,
 		Length:               protocol.ByteCount(len(raw)),
 		DestConnID:           connID,
 		IsPathMTUProbePacket: isMTUProbePacket,
