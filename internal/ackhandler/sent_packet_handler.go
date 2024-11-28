@@ -27,6 +27,9 @@ const (
 	maxPTODuration = 60 * time.Second
 )
 
+const Path2PNLowerlimit protocol.PacketNumber = 10000
+const Path2PNUpperlimit protocol.PacketNumber = 20000
+
 type packetNumberSpace struct {
 	history *sentPacketHistory
 	pns     packetNumberGenerator
@@ -56,7 +59,7 @@ func newPacketNumberSpace(initialPN protocol.PacketNumber, skipPNs bool) *packet
 
 func newPath2PacketNumberSpace() *packetNumberSpace {
 	fmt.Println("[Pn Space] create Path2 packet number space from 10001 to 20000")
-	pns := newRangedPacketNumberGenerator(10000, 20000)
+	pns := newRangedPacketNumberGenerator(Path2PNLowerlimit, Path2PNUpperlimit)
 	return &packetNumberSpace{
 		history:      newSentPacketHistory(),
 		pns:          pns,

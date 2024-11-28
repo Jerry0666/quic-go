@@ -1393,10 +1393,7 @@ func (s *connection) handleUnpackedShortHeaderPacket(
 	}
 	// should use packet number to determine Encryption level.
 	level := protocol.Encryption1RTT
-	if pn > 10000 {
-		// second path PN range
-		level = protocol.EncryptionPath2
-	}
+	level = s.SelectEncryptionLevelByPN(pn, level)
 	return s.receivedPacketHandler.ReceivedPacket(pn, ecn, level, rcvTime, isAckEliciting)
 }
 
@@ -1506,7 +1503,7 @@ func IsProbingFrame(f wire.Frame) bool {
 }
 
 func (s *connection) SelectEncryptionLevelByPN(pn protocol.PacketNumber, encLevel protocol.EncryptionLevel) protocol.EncryptionLevel {
-	if pn > 10000 {
+	if pn > ackhandler.Path2PNLowerlimit {
 		return protocol.EncryptionPath2
 	} else {
 		return encLevel
