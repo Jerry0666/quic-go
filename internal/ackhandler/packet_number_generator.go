@@ -1,8 +1,6 @@
 package ackhandler
 
 import (
-	"fmt"
-
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
 )
@@ -38,7 +36,7 @@ func (p *RangedPacketNumberGenerator) Pop() (bool, protocol.PacketNumber) {
 	next := p.next
 	p.next++
 	if p.next > p.validLargest {
-		fmt.Println("[Pn space] packet number range is full.")
+		panic("No packet number available!")
 	}
 	return false, next
 }
@@ -73,6 +71,8 @@ type skippingPacketNumberGenerator struct {
 	next       protocol.PacketNumber
 	nextToSkip protocol.PacketNumber
 
+	validLargest protocol.PacketNumber
+
 	rng utils.Rand
 }
 
@@ -80,9 +80,10 @@ var _ packetNumberGenerator = &skippingPacketNumberGenerator{}
 
 func newSkippingPacketNumberGenerator(initial, initialPeriod, maxPeriod protocol.PacketNumber) packetNumberGenerator {
 	g := &skippingPacketNumberGenerator{
-		next:      initial,
-		period:    initialPeriod,
-		maxPeriod: maxPeriod,
+		next:         initial,
+		period:       initialPeriod,
+		maxPeriod:    maxPeriod,
+		validLargest: Path2PNLowerlimit,
 	}
 	g.generateNewSkip()
 	return g
@@ -104,6 +105,9 @@ func (p *skippingPacketNumberGenerator) Pop() (bool, protocol.PacketNumber) {
 		return true, next
 	}
 	p.next++ // generate a new packet number for the next packet
+	if p.next > p.validLargest {
+		panic("No packet number available!")
+	}
 	return false, next
 }
 

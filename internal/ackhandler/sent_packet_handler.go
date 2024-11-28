@@ -27,8 +27,8 @@ const (
 	maxPTODuration = 60 * time.Second
 )
 
-const Path2PNLowerlimit protocol.PacketNumber = 10000
-const Path2PNUpperlimit protocol.PacketNumber = 20000
+const Path2PNLowerlimit protocol.PacketNumber = 20000
+const Path2PNUpperlimit protocol.PacketNumber = 40000
 
 type packetNumberSpace struct {
 	history *sentPacketHistory
