@@ -87,6 +87,8 @@ type sentPacketHandler struct {
 	// once we receive an ACK from the peer for packet 20, the lowestNotConfirmedAcked is 101
 	// Only applies to the application-data packet number space.
 	lowestNotConfirmedAcked protocol.PacketNumber
+	// The lowestNotConfirmedAcked for the path2
+	path2lowestNotConfirmedAcked protocol.PacketNumber
 
 	ackedPackets []*packet // to avoid allocations in detectAndRemoveAckedPackets
 
@@ -318,7 +320,7 @@ func (h *sentPacketHandler) SentPacketOnIdle(
 
 func (h *sentPacketHandler) SentPacket(
 	t time.Time,
-	pn, largestAcked protocol.PacketNumber,
+	pn, largestAcked, path2LargestAcked protocol.PacketNumber,
 	streamFrames []StreamFrame,
 	frames []Frame,
 	encLevel protocol.EncryptionLevel,
@@ -365,6 +367,7 @@ func (h *sentPacketHandler) SentPacket(
 	p.EncryptionLevel = encLevel
 	p.Length = size
 	p.LargestAcked = largestAcked
+	p.Path2LargestAcked = path2LargestAcked
 	p.StreamFrames = streamFrames
 	p.Frames = frames
 	p.IsPathMTUProbePacket = isPathMTUProbePacket
@@ -495,6 +498,10 @@ func (h *sentPacketHandler) GetLowestPacketNotConfirmedAcked() protocol.PacketNu
 	return h.lowestNotConfirmedAcked
 }
 
+func (h *sentPacketHandler) GetPath2LowestPacketNotConfirmedAcked() protocol.PacketNumber {
+	return h.path2lowestNotConfirmedAcked
+}
+
 // Packets are returned in ascending packet number order.
 func (h *sentPacketHandler) detectAndRemoveAckedPackets(ack *wire.AckFrame, encLevel protocol.EncryptionLevel) ([]*packet, error) {
 	pnSpace := h.getPacketNumberSpace(encLevel)
@@ -547,6 +554,9 @@ func (h *sentPacketHandler) detectAndRemoveAckedPackets(ack *wire.AckFrame, encL
 	for _, p := range h.ackedPackets {
 		if p.LargestAcked != protocol.InvalidPacketNumber && encLevel == protocol.Encryption1RTT {
 			h.lowestNotConfirmedAcked = max(h.lowestNotConfirmedAcked, p.LargestAcked+1)
+		}
+		if p.Path2LargestAcked != protocol.InvalidPacketNumber {
+			h.path2lowestNotConfirmedAcked = max(h.path2lowestNotConfirmedAcked, p.Path2LargestAcked+1)
 		}
 
 		for _, f := range p.Frames {

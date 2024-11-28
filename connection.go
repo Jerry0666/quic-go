@@ -400,7 +400,7 @@ var newClientConnection = func(
 		versionNegotiated:   hasNegotiatedVersion,
 		version:             v,
 		pathMap:             make(map[string]*Path),
-		IdlePathSend:        make(chan struct{}),
+		IdlePathSend:        make(chan struct{}, 5),
 		// ATSSS steering mode
 		SteeringMode: SmallestDelay,
 	}
@@ -2786,6 +2786,12 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	if p.Ack != nil {
 		largestAcked = p.Ack.LargestAcked()
 	}
+
+	path2LargestAcked := protocol.InvalidPacketNumber
+	if p.Path2Ack != nil {
+		path2LargestAcked = p.Path2Ack.LargestAcked()
+	}
+
 	// get the idle path and use it to drive packet number space
 	level := protocol.Encryption1RTT
 	if p.UsingPath != nil {
@@ -2796,7 +2802,8 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	if p.UsingIdle {
 		s.sentPacketHandler.SentPacketOnIdle(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, level, ecn, p.Length, p.IsPathMTUProbePacket)
 	} else {
-		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+		// [modify]
+		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, path2LargestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
 	}
 
 	s.connIDManager.SentPacket()
@@ -2812,7 +2819,7 @@ func (s *connection) sendPackedCoalescedPacket(packet *coalescedPacket, ecn prot
 		if p.ack != nil {
 			largestAcked = p.ack.LargestAcked()
 		}
-		s.sentPacketHandler.SentPacket(now, p.header.PacketNumber, largestAcked, p.streamFrames, p.frames, p.EncryptionLevel(), ecn, p.length, false)
+		s.sentPacketHandler.SentPacket(now, p.header.PacketNumber, largestAcked, -1, p.streamFrames, p.frames, p.EncryptionLevel(), ecn, p.length, false)
 		if s.perspective == protocol.PerspectiveClient && p.EncryptionLevel() == protocol.EncryptionHandshake &&
 			!s.droppedInitialKeys {
 			// On the client side, Initial keys are dropped as soon as the first Handshake packet is sent.
@@ -2830,7 +2837,7 @@ func (s *connection) sendPackedCoalescedPacket(packet *coalescedPacket, ecn prot
 		if p.Ack != nil {
 			largestAcked = p.Ack.LargestAcked()
 		}
-		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, -1, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
 	}
 	s.connIDManager.SentPacket()
 	s.sendQueue.Send(packet.buffer, 0, ecn)

@@ -11,7 +11,7 @@ import (
 // SentPacketHandler handles ACKs received for outgoing packets
 type SentPacketHandler interface {
 	// SentPacket may modify the packet
-	SentPacket(t time.Time, pn, largestAcked protocol.PacketNumber, streamFrames []StreamFrame, frames []Frame, encLevel protocol.EncryptionLevel, ecn protocol.ECN, size protocol.ByteCount, isPathMTUProbePacket bool)
+	SentPacket(t time.Time, pn, largestAcked, path2LargestAcked protocol.PacketNumber, streamFrames []StreamFrame, frames []Frame, encLevel protocol.EncryptionLevel, ecn protocol.ECN, size protocol.ByteCount, isPathMTUProbePacket bool)
 	// idle path version of SentPacket
 	SentPacketOnIdle(t time.Time, pn, largestAcked protocol.PacketNumber, streamFrames []StreamFrame, frames []Frame, encLevel protocol.EncryptionLevel, ecn protocol.ECN, size protocol.ByteCount, isPathMTUProbePacket bool)
 	// ReceivedAck processes an ACK frame.
@@ -44,6 +44,7 @@ type SentPacketHandler interface {
 
 type sentPacketTracker interface {
 	GetLowestPacketNotConfirmedAcked() protocol.PacketNumber
+	GetPath2LowestPacketNotConfirmedAcked() protocol.PacketNumber
 	ReceivedPacket(protocol.EncryptionLevel)
 }
 
