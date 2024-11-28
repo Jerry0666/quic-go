@@ -1585,7 +1585,11 @@ func (s *connection) handlePacket(p receivedPacket) {
 			if err != nil {
 				fmt.Printf("err: %v\n", err)
 			}
+			path.pathId = 2
 			s.pathMap[p.remoteAddr.String()] = path
+			// set the connection packer
+			fmt.Println("[Ack] set the server packer")
+			s.packer.SetPathArray(s.UsingPath, path)
 
 			// parse the packet ConnId, use 4 as connID len.
 			connId, _ := wire.ParseConnectionID(p.data, 4)
@@ -1603,6 +1607,7 @@ func (s *connection) handlePacket(p receivedPacket) {
 		if !wire.IsLongHeaderPacket(p.data[0]) {
 			ATSSSPrintln("[debug][server] Using path has not been set.")
 			path := NewPath(nil, p.remoteAddr, false)
+			path.pathId = 1
 			path.ServerSet(s.conn.GetRawConn(), p)
 
 			// parse the packet ConnId
@@ -2424,6 +2429,10 @@ func (s *connection) SendPathChallenge(path *Path) error {
 
 func (s *connection) SendPathResponse(b []byte, path *Path) error {
 	ATSSSPrintln("SendPathResponse!!!")
+	if path != nil && path == s.UsingPath {
+		s.queueControlFrame(&wire.PathResponseFrame{Data: [8]byte(b)})
+		return nil
+	}
 	buf := getLargePacketBuffer()
 	maxSize := s.mtuDiscoverer.CurrentSize()
 	p, err := s.packer.PackPathResponse(buf, maxSize, s.version, b, path)
@@ -2436,18 +2445,12 @@ func (s *connection) SendPathResponse(b []byte, path *Path) error {
 		p.UsingIdle = true
 	}
 	p.UsingPath = path
-
-	s.registerPackedShortHeaderPacket(p, ecn, now)
-	if path != nil {
-		if path == s.UsingPath {
-			s.queueControlFrame(&wire.PathResponseFrame{Data: [8]byte(b)})
-		} else {
-			path.Send(buf, uint16(maxSize), ecn)
-		}
-	} else {
-		fmt.Println("[error] should use path.")
+	if p.UsingPath != s.UsingPath {
+		p.UsingIdle = true
 	}
 
+	s.registerPackedShortHeaderPacket(p, ecn, now)
+	path.Send(buf, uint16(maxSize), ecn)
 	return err
 }
 
@@ -2796,7 +2799,7 @@ func (s *connection) registerPackedShortHeaderPacket(p shortHeaderPacket, ecn pr
 	if p.UsingIdle {
 		s.sentPacketHandler.SentPacketOnIdle(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, level, ecn, p.Length, p.IsPathMTUProbePacket)
 	} else {
-		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, protocol.Encryption1RTT, ecn, p.Length, p.IsPathMTUProbePacket)
+		s.sentPacketHandler.SentPacket(now, p.PacketNumber, largestAcked, p.StreamFrames, p.Frames, level, ecn, p.Length, p.IsPathMTUProbePacket)
 	}
 
 	s.connIDManager.SentPacket()

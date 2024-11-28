@@ -533,13 +533,13 @@ func (p *packetPacker) appendPathResponse(buf *packetBuffer, maxPacketSize proto
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	fmt.Printf("pathId:%d\n", path.pathId)
+	fmt.Printf("[PathResponse] pathId:%d\n", path.pathId)
 	level := protocol.Encryption1RTT
 	if path.pathId == 2 {
 		level = protocol.EncryptionPath2
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(level)
-	fmt.Printf("pn:%d\n", pn)
+	fmt.Printf("[PathResponse] pn:%d\n", pn)
 	connID := path.connId
 	var pl payload
 	p_re := &wire.PathResponseFrame{Data: [8]byte(challenge)}
@@ -711,6 +711,7 @@ func (p *packetPacker) composeNextPacket(maxFrameSize protocol.ByteCount, onlyAc
 	}
 
 	if hasRetransmission {
+		fmt.Println("[debug] hasRetransmission")
 		for {
 			remainingLen := maxFrameSize - pl.length
 			if remainingLen < protocol.MinStreamFrameSize {
@@ -814,6 +815,7 @@ func (p *packetPacker) MaybePackProbePacket(encLevel protocol.EncryptionLevel, m
 }
 
 func (p *packetPacker) PackMTUProbePacket(ping ackhandler.Frame, size protocol.ByteCount, v protocol.Version) (shortHeaderPacket, *packetBuffer, error) {
+	fmt.Println("[server] PackMTUProbePacket")
 	pl := payload{
 		frames: []ackhandler.Frame{ping},
 		length: ping.Frame.Length(v),

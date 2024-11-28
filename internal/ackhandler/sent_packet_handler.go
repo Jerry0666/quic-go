@@ -724,7 +724,7 @@ func (h *sentPacketHandler) detectLostPackets(now time.Time, encLevel protocol.E
 
 		var packetLost bool
 		if p.SendTime.Before(lostSendTime) {
-			fmt.Println("[Lost] due to time too long")
+			fmt.Printf("[Lost] due to time too long. PN:%d\n", p.PacketNumber)
 			packetLost = true
 			if !p.skippedPacket {
 				if h.logger.Debug() {
