@@ -446,7 +446,6 @@ func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.En
 		return false, err
 	}
 	// update the RTT, if the largest acked is newly acknowledged
-	// [todo] add a new RTTstat
 	if len(ackedPackets) > 0 {
 		if p := ackedPackets[len(ackedPackets)-1]; p.PacketNumber == ack.LargestAcked() {
 			if p.SendOnIdlePath {

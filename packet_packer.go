@@ -478,9 +478,16 @@ func (p *packetPacker) appendPacket(buf *packetBuffer, onlyAck bool, maxPacketSi
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	// [todo] need to use connID to determine its path packet number space.
-	pn, pnLen := p.pnManager.PeekPacketNumber(protocol.Encryption1RTT)
 	connID := p.getDestConnID()
+	// use connID to determine its path packet number space.
+	var level protocol.EncryptionLevel
+	if connID.String() == p.pathArray[0].connId.String() {
+		level = protocol.Encryption1RTT
+	} else if connID.String() == p.pathArray[1].connId.String() {
+		level = protocol.EncryptionPath2
+	}
+	pn, pnLen := p.pnManager.PeekPacketNumber(level)
+
 	hdrLen := wire.ShortHeaderLen(connID, pnLen)
 	pl := p.maybeGetShortHeaderPacket(sealer, hdrLen, maxPacketSize, onlyAck, true, v)
 	if pl.length == 0 {
@@ -497,7 +504,12 @@ func (p *packetPacker) PackPathChallenge(buf *packetBuffer, maxPacketSize protoc
 
 // [todo] finish this function
 func (p *packetPacker) ChooseEncryptionLevelByPath(path *Path) protocol.EncryptionLevel {
-	return protocol.EncryptionPath2
+	if path.pathId == 1 {
+		return protocol.Encryption1RTT
+	} else {
+		return protocol.EncryptionPath2
+	}
+
 }
 
 func (p *packetPacker) appendPathChallenge(buf *packetBuffer, maxPacketSize protocol.ByteCount, v protocol.Version, path *Path) (shortHeaderPacket, error) {
@@ -944,6 +956,13 @@ func (p *packetPacker) appendShortHeaderPacket(
 	if newPN := p.pnManager.PopPacketNumber(level); newPN != pn {
 		return shortHeaderPacket{}, fmt.Errorf("packetPacker BUG: Peeked and Popped packet numbers do not match: expected %d, got %d", pn, newPN)
 	}
+	// find the path
+	var path *Path
+	if connID.String() == p.pathArray[0].connId.String() {
+		path = p.pathArray[0]
+	} else {
+		path = p.pathArray[1]
+	}
 	return shortHeaderPacket{
 		PacketNumber:         pn,
 		PacketNumberLen:      pnLen,
@@ -955,6 +974,7 @@ func (p *packetPacker) appendShortHeaderPacket(
 		Length:               protocol.ByteCount(len(raw)),
 		DestConnID:           connID,
 		IsPathMTUProbePacket: isMTUProbePacket,
+		UsingPath:            path,
 	}, nil
 }
 
