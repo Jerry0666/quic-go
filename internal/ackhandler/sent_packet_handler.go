@@ -30,6 +30,20 @@ const (
 const Path2PNLowerlimit protocol.PacketNumber = 20000
 const Path2PNUpperlimit protocol.PacketNumber = 40000
 
+const PNLog bool = false
+
+func PacketNumberPrintf(format string, args ...interface{}) {
+	if PNLog {
+		fmt.Printf(format, args...)
+	}
+}
+
+func PacketNumberPrintln(s string) {
+	if PNLog {
+		fmt.Println(s)
+	}
+}
+
 type packetNumberSpace struct {
 	history *sentPacketHistory
 	pns     packetNumberGenerator
@@ -405,7 +419,7 @@ func (h *sentPacketHandler) RTTcopy(s *utils.RTTStats) {
 
 func (h *sentPacketHandler) ReceivedAck(ack *wire.AckFrame, encLevel protocol.EncryptionLevel, rcvTime time.Time) (bool /* contained 1-RTT packet */, error) {
 	if encLevel == protocol.EncryptionPath2 {
-		fmt.Println("[Ack] ReceivedAck for path2.")
+		PacketNumberPrintln("[Ack] ReceivedAck for path2.")
 	}
 	pnSpace := h.getPacketNumberSpace(encLevel)
 

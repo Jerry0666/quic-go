@@ -1,7 +1,6 @@
 package ackhandler
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -123,7 +122,7 @@ func (h *receivedPacketHistory) AppendAckRanges(ackRanges []wire.AckRange) []wir
 			ackRanges = append(ackRanges, wire.AckRange{Smallest: el.Value.Start, Largest: el.Value.End})
 		}
 	}
-	fmt.Printf("[Ack] ackRanges:%v\n", ackRanges)
+	PacketNumberPrintf("[Ack] ackRanges:%v\n", ackRanges)
 	return ackRanges
 }
 

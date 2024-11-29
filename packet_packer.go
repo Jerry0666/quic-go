@@ -534,13 +534,13 @@ func (p *packetPacker) appendPathResponse(buf *packetBuffer, maxPacketSize proto
 	if err != nil {
 		return shortHeaderPacket{}, err
 	}
-	fmt.Printf("[PathResponse] pathId:%d\n", path.pathId)
+	ackhandler.PacketNumberPrintf("[PathResponse] pathId:%d\n", path.pathId)
 	level := protocol.Encryption1RTT
 	if path.pathId == 2 {
 		level = protocol.EncryptionPath2
 	}
 	pn, pnLen := p.pnManager.PeekPacketNumber(level)
-	fmt.Printf("[PathResponse] pn:%d\n", pn)
+	ackhandler.PacketNumberPrintf("[PathResponse] pn:%d\n", pn)
 	connID := path.connId
 	var pl payload
 	p_re := &wire.PathResponseFrame{Data: [8]byte(challenge)}

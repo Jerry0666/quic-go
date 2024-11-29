@@ -104,7 +104,7 @@ func newAppDataReceivedPacketTracker(logger utils.Logger) *appDataReceivedPacket
 
 func (h *appDataReceivedPacketTracker) ReceivedPacket(pn protocol.PacketNumber, ecn protocol.ECN, rcvTime time.Time, ackEliciting bool) error {
 	if pn > Path2PNLowerlimit {
-		fmt.Println("[PacketTracker] ReceivedPacket on path2.")
+		PacketNumberPrintln("[PacketTracker] ReceivedPacket on path2.")
 	}
 	if err := h.receivedPacketTracker.ReceivedPacket(pn, ecn, rcvTime, ackEliciting); err != nil {
 		return err
